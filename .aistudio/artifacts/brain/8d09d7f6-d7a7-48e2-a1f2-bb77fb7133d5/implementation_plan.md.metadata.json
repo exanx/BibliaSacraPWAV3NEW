@@ -1,0 +1,6 @@
+{
+  "summary":  "Revised implementation plan incorporating user feedback: removing the standalone AI button above Voice Reader in the sidebar, anchoring AI search to the main search bar and its companion AI button, replacing the top-bar AI button with a fast mobile Quick Search popout, adding the Settings toggle to hide AI features, minimalizing the AI search interface, and integrating AES-GCM encrypted personal Gemini API key management.",
+  "updatedAt":  "2026-10-27T18:08:39.693414255Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}
