@@ -554,19 +554,14 @@
         <div class="space-y-6">
             <!-- Search -->
             <div>
-                <div class="flex items-center justify-between mb-2">
-                    <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Search</label>
-                    <button type="button" class="open-ai-search-modal-btn ai-feature-ui text-[10px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer" title="Search Bible with AI natural language">
-                        <svg class="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 24 24"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"/></svg>
-                        <span>AI Search</span>
-                    </button>
-                </div>
+                <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 mb-2">Search</label>
                 <div class="relative flex items-center">
                     <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"></path></svg>
-                    <input type="text" class="direct-verse-input glass-input w-full pl-9 pr-20 py-2.5 rounded-lg outline-none text-sm placeholder-gray-400" placeholder="e.g. Jn 3:16 or 'Eucharist'">
+                    <input type="text" class="direct-verse-input glass-input w-full pl-9 pr-24 py-2.5 rounded-lg outline-none text-sm placeholder-gray-400" placeholder="e.g. Jn 3:16 or 'Eucharist'">
                     <div class="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                        <button type="button" class="open-ai-search-modal-btn ai-feature-ui p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors cursor-pointer" title="AI Scripture Search">
+                        <button type="button" class="open-ai-search-modal-btn ai-feature-ui px-1.5 py-1 rounded-md text-primary hover:bg-primary/10 transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold" title="AI Scripture Search">
                             <svg class="w-3.5 h-3.5 text-primary" fill="currentColor" viewBox="0 0 24 24"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"/></svg>
+                            <span>AI</span>
                         </button>
                         <button class="direct-verse-search-btn btn-secondary text-[10px] font-bold px-2 py-1 rounded-md">GO</button>
                     </div>
@@ -1153,10 +1148,11 @@
             <div class="p-4 space-y-3">
                 <div class="relative flex items-center">
                     <svg class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"></path></svg>
-                    <input type="text" id="quick-search-input" class="direct-verse-input glass-input w-full pl-10 pr-24 py-3 rounded-xl text-sm outline-none placeholder-gray-400 font-medium" placeholder="e.g. Jn 3:16, Mt 26, or 'Eucharist'...">
+                    <input type="text" id="quick-search-input" class="direct-verse-input glass-input w-full pl-10 pr-28 py-3 rounded-xl text-sm outline-none placeholder-gray-400 font-medium" placeholder="e.g. Jn 3:16, Mt 26, or 'Eucharist'...">
                     <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                        <button type="button" class="open-ai-search-modal-btn ai-feature-ui p-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors cursor-pointer" title="AI Scripture Search">
-                            <svg class="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 24 24"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"/></svg>
+                        <button type="button" class="open-ai-search-modal-btn ai-feature-ui px-2 py-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold" title="AI Scripture Search">
+                            <svg class="w-3.5 h-3.5 text-primary" fill="currentColor" viewBox="0 0 24 24"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"/></svg>
+                            <span>AI</span>
                         </button>
                         <button type="button" id="quick-search-go-btn" class="direct-verse-search-btn btn-primary text-xs font-bold px-3 py-1.5 rounded-lg cursor-pointer">GO</button>
                     </div>

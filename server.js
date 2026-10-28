@@ -68,7 +68,7 @@ app.post('/api/ai/validate-key', async (req, res) => {
       return res.status(400).json({ error: 'Invalid API key format.' });
     }
 
-    const testModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+    const testModels = ['gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
     let lastErr = null;
     for (const testModel of testModels) {
       try {
@@ -166,8 +166,8 @@ Also provide a concise 1-2 sentence overarching biblical summary of what Catholi
       }
     };
 
-    // Prioritize high-availability, universally accessible models for instant verse retrieval, with full fallback
-    const candidateModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+    // Prioritize Gemini Flash Lite for ultra-fast, low-latency verse retrieval, with full fallback
+    const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
     let lastError = null;
     let responseText = null;
 

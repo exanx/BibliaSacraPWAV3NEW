@@ -4211,7 +4211,7 @@ function closeAISearchModal() {
 // Universal Client-Side Gemini Search (Direct REST API for static/PWA/external hosting)
 async function callGeminiDirect(apiKey, cleanQuery, translation) {
     if (!apiKey) return null;
-    const candidateModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+    const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
     
     const systemInstruction = `You are an expert Catholic scripture search engine and biblical theologian.
 Your task is to search the 73 books of the Catholic Bible (including the Deuterocanonical books: Tobit, Judith, 1 & 2 Maccabees, Wisdom, Sirach, Baruch) and find verses directly addressing the user's natural language subject or question (such as "jesus on the eucharist", "Jesus naming Peter the rock", "Jesus being opposed by people", "charity and love", "psalms of sorrow").
@@ -4299,7 +4299,7 @@ Find 4 to 8 of the most relevant, direct, and spiritually profound Bible verses 
 async function validateGeminiKeyDirect(key) {
     if (!key || !key.trim()) return { ok: false, error: 'API key is required.' };
     const cleanKey = key.trim();
-    const testModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+    const testModels = ['gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
 
     for (const model of testModels) {
         try {
