@@ -4208,6 +4208,128 @@ function closeAISearchModal() {
     if (modal) modal.classList.add('hidden');
 }
 
+// Universal Client-Side Gemini Search (Direct REST API for static/PWA/external hosting)
+async function callGeminiDirect(apiKey, cleanQuery, translation) {
+    if (!apiKey) return null;
+    const candidateModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+    
+    const systemInstruction = `You are an expert Catholic scripture search engine and biblical theologian.
+Your task is to search the 73 books of the Catholic Bible (including the Deuterocanonical books: Tobit, Judith, 1 & 2 Maccabees, Wisdom, Sirach, Baruch) and find verses directly addressing the user's natural language subject or question (such as "jesus on the eucharist", "Jesus naming Peter the rock", "Jesus being opposed by people", "charity and love", "psalms of sorrow").
+
+For each verse:
+1. book: Canonical Catholic Bible book name in English (e.g. "Genesis", "Exodus", "Matthew", "John", "Romans", "1 Peter", "Wisdom", "Sirach", "Psalms").
+2. chapter: Integer chapter number.
+3. verse: Integer starting verse number.
+4. verseEnd: Integer ending verse number if a range, or same as verse if single.
+5. reference: Standard citation string (e.g. "John 6:51-58" or "Matthew 16:18-19").
+6. text: The actual verse text in the requested Catholic translation (${translation || 'CPDV'}).
+7. explanation: 1-2 clear, insightful sentences explaining specifically why and how this scripture connects with the user's query.
+8. testament: "Old Testament" or "New Testament".
+
+Also provide a concise 1-2 sentence overarching biblical summary of what Catholic Scripture teaches on this topic.
+Respond in valid JSON only with keys "summary" and "verses" (array of verse objects).`;
+
+    const userPrompt = `User search subject / question: "${cleanQuery}".
+Requested Bible translation: ${translation || 'Catholic Public Domain Version'}.
+Find 4 to 8 of the most relevant, direct, and spiritually profound Bible verses from the 73 books of the Catholic Bible canon that address this subject.`;
+
+    const requestBody = {
+        systemInstruction: {
+            parts: [{ text: systemInstruction }]
+        },
+        contents: [
+            { parts: [{ text: userPrompt }] }
+        ],
+        generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.2
+        }
+    };
+
+    let lastError = null;
+    for (const model of candidateModels) {
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                if (res.status === 400 && errData?.error?.message?.includes('API key not valid')) {
+                    throw new Error("Invalid Gemini API key. Please check your key in Google AI Studio and try again.");
+                }
+                lastError = new Error(errData?.error?.message || `HTTP ${res.status}`);
+                continue;
+            }
+
+            const data = await res.json();
+            const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!rawText) continue;
+
+            let cleaned = rawText.trim();
+            if (cleaned.startsWith('```json')) {
+                cleaned = cleaned.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+            } else if (cleaned.startsWith('```')) {
+                cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+            }
+
+            const parsed = JSON.parse(cleaned);
+            if (Array.isArray(parsed)) {
+                return {
+                    summary: `Scripture teachings regarding "${cleanQuery}".`,
+                    verses: parsed
+                };
+            }
+            if (parsed && Array.isArray(parsed.verses)) {
+                return parsed;
+            }
+        } catch (e) {
+            if (e.message && e.message.includes("Invalid Gemini API key")) throw e;
+            lastError = e;
+        }
+    }
+    if (lastError) throw lastError;
+    return null;
+}
+
+// Universal Client-Side Gemini Key Validation
+async function validateGeminiKeyDirect(key) {
+    if (!key || !key.trim()) return { ok: false, error: 'API key is required.' };
+    const cleanKey = key.trim();
+    const testModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+
+    for (const model of testModels) {
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: 'Respond with OK' }] }]
+                })
+            });
+
+            if (res.ok) {
+                return { ok: true, message: 'Gemini API key verified successfully!' };
+            }
+            const errJson = await res.json().catch(() => ({}));
+            if (res.status === 400 && errJson?.error?.message?.includes('API key not valid')) {
+                return { ok: false, error: 'Invalid Gemini API key. Please check the key in Google AI Studio.' };
+            }
+            if (res.status === 404) continue;
+            if (errJson?.error?.message) {
+                return { ok: false, error: errJson.error.message };
+            }
+        } catch (netErr) {
+            console.warn(`[validateGeminiKeyDirect] ${model} attempt failed:`, netErr);
+        }
+    }
+    return { ok: false, error: 'Could not connect to Gemini API. Please check your internet connection and API key.' };
+}
+
 async function performAISearch(query) {
     if (!query || !query.trim()) return;
     const cleanQuery = query.trim();
@@ -4246,26 +4368,50 @@ async function performAISearch(query) {
 
     try {
         const translation = currentTranslationName || 'Catholic Public Domain Version';
-        const res = await fetch('/api/ai/search-verses', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'x-gemini-api-key': apiKey
-            },
-            body: JSON.stringify({ query: cleanQuery, translation })
-        });
+        let data = null;
 
-        if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            if (res.status === 401 || errData.needsApiKey) {
-                const keyPrompt = document.getElementById('ai-search-key-prompt');
-                if (keyPrompt) keyPrompt.classList.remove('hidden');
-                throw new Error("Invalid or missing Gemini API key. Please re-enter your key.");
+        // 1. First attempt: Direct client-side Gemini REST call (works anywhere outside AI Studio, e.g. GitHub Pages, Firebase Hosting, Netlify, PWA)
+        if (apiKey) {
+            try {
+                data = await callGeminiDirect(apiKey, cleanQuery, translation);
+            } catch (directErr) {
+                if (directErr.message && directErr.message.includes("Invalid Gemini API key")) {
+                    const keyPrompt = document.getElementById('ai-search-key-prompt');
+                    if (keyPrompt) keyPrompt.classList.remove('hidden');
+                    throw directErr;
+                }
+                console.warn("[AISearch] Direct Gemini call failed, attempting server proxy fallback...", directErr);
             }
-            throw new Error(errData.error || `Server responded with status ${res.status}`);
         }
 
-        const data = await res.json();
+        // 2. Second attempt: Server proxy endpoint (if running on Node.js server or AI Studio environment)
+        if (!data) {
+            const res = await fetch('/api/ai/search-verses', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...(apiKey ? { 'x-gemini-api-key': apiKey } : {})
+                },
+                body: JSON.stringify({ query: cleanQuery, translation })
+            }).catch(() => null);
+
+            if (res && res.ok) {
+                data = await res.json().catch(() => null);
+            } else if (res && (res.status === 401 || res.status === 400)) {
+                const errData = await res.json().catch(() => ({}));
+                if (res.status === 401 || errData.needsApiKey) {
+                    const keyPrompt = document.getElementById('ai-search-key-prompt');
+                    if (keyPrompt) keyPrompt.classList.remove('hidden');
+                    throw new Error("Invalid or missing Gemini API key. Please re-enter your key.");
+                }
+                throw new Error(errData.error || `Server responded with status ${res.status}`);
+            }
+        }
+
+        if (!data || !Array.isArray(data.verses)) {
+            throw new Error("Failed to retrieve scripture verses. Please verify your Gemini API key in Settings.");
+        }
+
         lastAISearchResults = data;
 
         if (loadingView) loadingView.classList.add('hidden');
@@ -4425,6 +4571,15 @@ async function testGeminiApiKey() {
     if (spinner) spinner.classList.remove('hidden');
 
     try {
+        // Direct validation first (works everywhere, offline-capable / static hosting / outside AI Studio)
+        const directResult = await validateGeminiKeyDirect(keyToTest);
+        if (directResult.ok) {
+            showToast("Gemini API key verified successfully!");
+            await saveUserGeminiApiKey(keyToTest);
+            return;
+        }
+
+        // Fallback to server validation if direct call failed due to network anomaly
         const res = await fetch('/api/ai/validate-key', {
             method: 'POST',
             headers: {
@@ -4432,16 +4587,17 @@ async function testGeminiApiKey() {
                 'x-gemini-api-key': keyToTest
             },
             body: JSON.stringify({})
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
+        }).catch(() => null);
+
+        if (res && res.ok) {
             showToast("Gemini API key verified successfully!");
             await saveUserGeminiApiKey(keyToTest);
         } else {
-            showToast(data.error || "Failed to validate Gemini API key.");
+            const data = res ? await res.json().catch(() => ({})) : {};
+            showToast(directResult.error || data.error || "Failed to validate Gemini API key.");
         }
     } catch (e) {
-        showToast("Error connecting to Gemini API validation endpoint.");
+        showToast(e.message || "Error connecting to Gemini API validation.");
     } finally {
         if (btnText) btnText.textContent = 'Test Key';
         if (spinner) spinner.classList.add('hidden');
@@ -4669,8 +4825,29 @@ window.onload = async () => {
     document.getElementById('grid-back-btn').addEventListener('click', showBookGrid); closeGridModalBtn.addEventListener('click', () => gridModal.classList.add('hidden'));
 
     const inputs = document.querySelectorAll('.direct-verse-input');
-    document.querySelectorAll('.direct-verse-search-btn').forEach(btn => btn.addEventListener('click', (e) => parseAndFetchVerse(e.target.parentElement.querySelector('.direct-verse-input').value)));
-    inputs.forEach(input => { input.addEventListener('keypress', e => { if (e.key === 'Enter') parseAndFetchVerse(e.target.value); }); input.addEventListener('input', e => inputs.forEach(i => { if (i !== e.target) i.value = e.target.value; })); });
+    document.querySelectorAll('.direct-verse-search-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const targetBtn = e.currentTarget || btn;
+            const container = targetBtn.closest('.relative') || targetBtn.closest('.glass-panel') || targetBtn.parentElement?.parentElement;
+            const input = container?.querySelector('.direct-verse-input') || document.querySelector('.direct-verse-input');
+            const val = input ? input.value.trim() : '';
+            if (val) {
+                parseAndFetchVerse(val);
+                closeQuickSearchModal();
+            }
+        });
+    });
+    inputs.forEach(input => { 
+        input.addEventListener('keypress', e => { 
+            if (e.key === 'Enter' && e.target.value.trim()) {
+                parseAndFetchVerse(e.target.value.trim());
+                closeQuickSearchModal();
+            }
+        }); 
+        input.addEventListener('input', e => inputs.forEach(i => { 
+            if (i !== e.target) i.value = e.target.value; 
+        })); 
+    });
     
     document.querySelectorAll('.font-increase').forEach(btn => btn.addEventListener('click', () => changeFontSize(0.125))); document.querySelectorAll('.font-decrease').forEach(btn => btn.addEventListener('click', () => changeFontSize(-0.125)));
     document.querySelectorAll('.line-spacing-btn').forEach(btn => btn.addEventListener('click', (e) => applyLineSpacing(e.currentTarget.dataset.ratio))); document.querySelectorAll('.font-weight-toggle').forEach(btn => btn.addEventListener('click', () => applyFontWeight(!currentIsBold)));

@@ -29,17 +29,21 @@ if (fs.existsSync(envPath)) {
 const app = express();
 app.use(express.json());
 
+// Enable CORS for cross-origin requests when hosted externally
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-gemini-api-key');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
 // Helper function to create GoogleGenAI client with user-provided key or server fallback
 function getGenAIClient(customApiKey) {
   const key = (customApiKey || process.env.GEMINI_API_KEY || '').trim();
   if (!key) return null;
   return new GoogleGenAI({
-    apiKey: key,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      }
-    }
+    apiKey: key
   });
 }
 
@@ -63,14 +67,24 @@ app.post('/api/ai/validate-key', async (req, res) => {
     if (!testAi) {
       return res.status(400).json({ error: 'Invalid API key format.' });
     }
-    const response = await testAi.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
-      contents: 'Respond with OK',
-    });
-    if (response) {
-      return res.json({ success: true, message: 'Gemini API key verified successfully!' });
+
+    const testModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+    let lastErr = null;
+    for (const testModel of testModels) {
+      try {
+        const response = await testAi.models.generateContent({
+          model: testModel,
+          contents: 'Respond with OK',
+        });
+        if (response) {
+          return res.json({ success: true, message: 'Gemini API key verified successfully!' });
+        }
+      } catch (e) {
+        lastErr = e;
+        if (e?.message && e.message.includes('API_KEY_INVALID')) break;
+      }
     }
-    return res.status(400).json({ error: 'No response received from Gemini.' });
+    throw lastErr || new Error('No response received from Gemini.');
   } catch (err) {
     console.error('[API Key Validation Error]:', err?.message || err);
     return res.status(400).json({
@@ -152,8 +166,8 @@ Also provide a concise 1-2 sentence overarching biblical summary of what Catholi
       }
     };
 
-    // Prioritize high-availability model for instant verse retrieval, with full fallback
-    const candidateModels = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+    // Prioritize high-availability, universally accessible models for instant verse retrieval, with full fallback
+    const candidateModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
     let lastError = null;
     let responseText = null;
 
