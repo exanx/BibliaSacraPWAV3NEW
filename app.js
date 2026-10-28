@@ -1469,12 +1469,12 @@ async function parseAndFetchVerse(inputString) {
     let foundBook = null, remainingString = '';
     for (const key of searchKeys) { if (input.startsWith(key)) { const nextChar = input.charAt(key.length); if (!nextChar || nextChar === ' ' || !isNaN(nextChar)) { foundBook = bookAliases[key] || fullNames.find(n => n.toLowerCase() === key); remainingString = input.substring(key.length).trim(); break; } } }
     if (!foundBook) {
-        if (input.length > 2) {
+        if (aiFeaturesEnabled && input.length > 2) {
             showToast(`Searching Sacred Scripture with AI for "${inputString}"...`);
             openAISearchModal(inputString);
             return;
         }
-        return showToast("Book not found.");
+        return showToast("Book not found. Enter a scripture reference (e.g. Jn 3:16, Mt 26).");
     }
     let chapter = '1', verse = null; if (remainingString) { const parts = remainingString.match(/^(\d+)(?:[\s:.-]+(\d+))?/); if (!parts) return showToast("Invalid format."); chapter = parts[1]; if (parts[2]) verse = parts[2]; }
     const chapterCount = BIBLE_BOOKS["Old Testament"][foundBook] || BIBLE_BOOKS["New Testament"][foundBook]; if (parseInt(chapter) > chapterCount || parseInt(chapter) < 1) return showToast(`Chapter ${chapter} does not exist in ${foundBook}.`);
@@ -4085,6 +4085,39 @@ function setAIFeaturesEnabled(enabled, skipSave = false) {
         }
     });
 
+    document.querySelectorAll('.ai-disabled-hint-ui').forEach(el => {
+        if (aiFeaturesEnabled) {
+            el.classList.add('hidden');
+        } else {
+            el.classList.remove('hidden');
+        }
+    });
+
+    // Update search bar placeholders & padding
+    document.querySelectorAll('.direct-verse-input').forEach(input => {
+        if (aiFeaturesEnabled) {
+            input.placeholder = input.id === 'quick-search-input' 
+                ? "e.g. Jn 3:16, Mt 26, or 'Eucharist'..." 
+                : "e.g. Jn 3:16 or 'Eucharist'";
+            if (input.id === 'quick-search-input') {
+                input.classList.remove('pr-16');
+                input.classList.add('pr-28');
+            } else {
+                input.classList.remove('pr-14');
+                input.classList.add('pr-24');
+            }
+        } else {
+            input.placeholder = "e.g. Jn 3:16, Mt 26, Gen 1";
+            if (input.id === 'quick-search-input') {
+                input.classList.remove('pr-28');
+                input.classList.add('pr-16');
+            } else {
+                input.classList.remove('pr-24');
+                input.classList.add('pr-14');
+            }
+        }
+    });
+
     const toggle = document.getElementById('settings-show-ai-toggle');
     if (toggle) toggle.checked = aiFeaturesEnabled;
 
@@ -4554,53 +4587,93 @@ async function openVerseInChapter(book, chapter, verse) {
     showToast(`Jumped to ${canonicalBook} ${chapterStr}${verseStr ? `:${verseStr}` : ''}`);
 }
 
+function resetTestKeyButtonState() {
+    const testBtn = document.getElementById('test-gemini-key-btn');
+    const btnText = document.getElementById('test-key-btn-text');
+    if (testBtn) {
+        testBtn.classList.remove(
+            '!bg-emerald-600', '!text-white', '!border-emerald-600', 'dark:!bg-emerald-600', 'dark:!border-emerald-600',
+            '!bg-red-600', '!border-red-600', 'dark:!bg-red-600', 'dark:!border-red-600'
+        );
+    }
+    if (btnText && btnText.textContent !== 'Testing...') {
+        btnText.textContent = 'Test Key';
+    }
+}
+
 async function testGeminiApiKey() {
     const input = document.getElementById('settings-gemini-api-key-input');
     const val = input ? input.value.trim() : '';
     const keyToTest = val || await getPlainUserGeminiApiKey();
 
+    const testBtn = document.getElementById('test-gemini-key-btn');
+    const btnText = document.getElementById('test-key-btn-text');
+    const spinner = document.getElementById('test-key-spinner');
+
     if (!keyToTest) {
         showToast("Please enter an API key to test.");
+        if (testBtn) {
+            testBtn.classList.remove('!bg-emerald-600', '!border-emerald-600', 'dark:!bg-emerald-600', 'dark:!border-emerald-600');
+            testBtn.classList.add('!bg-red-600', '!text-white', '!border-red-600', 'dark:!bg-red-600', 'dark:!border-red-600');
+        }
+        if (btnText) btnText.textContent = 'Failed ✗';
         if (input) input.focus();
+        setTimeout(resetTestKeyButtonState, 3500);
         return;
     }
 
-    const btnText = document.getElementById('test-key-btn-text');
-    const spinner = document.getElementById('test-key-spinner');
+    // Reset styles for testing state
+    resetTestKeyButtonState();
     if (btnText) btnText.textContent = 'Testing...';
     if (spinner) spinner.classList.remove('hidden');
+
+    let isSuccess = false;
+    let errorMessage = null;
 
     try {
         // Direct validation first (works everywhere, offline-capable / static hosting / outside AI Studio)
         const directResult = await validateGeminiKeyDirect(keyToTest);
         if (directResult.ok) {
-            showToast("Gemini API key verified successfully!");
-            await saveUserGeminiApiKey(keyToTest);
-            return;
-        }
-
-        // Fallback to server validation if direct call failed due to network anomaly
-        const res = await fetch('/api/ai/validate-key', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-gemini-api-key': keyToTest
-            },
-            body: JSON.stringify({})
-        }).catch(() => null);
-
-        if (res && res.ok) {
-            showToast("Gemini API key verified successfully!");
+            isSuccess = true;
             await saveUserGeminiApiKey(keyToTest);
         } else {
-            const data = res ? await res.json().catch(() => ({})) : {};
-            showToast(directResult.error || data.error || "Failed to validate Gemini API key.");
+            // Fallback to server validation if direct call failed due to network anomaly
+            const res = await fetch('/api/ai/validate-key', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-gemini-api-key': keyToTest
+                },
+                body: JSON.stringify({})
+            }).catch(() => null);
+
+            if (res && res.ok) {
+                isSuccess = true;
+                await saveUserGeminiApiKey(keyToTest);
+            } else {
+                const data = res ? await res.json().catch(() => ({})) : {};
+                errorMessage = directResult.error || data.error || "Failed to validate Gemini API key.";
+            }
         }
     } catch (e) {
-        showToast(e.message || "Error connecting to Gemini API validation.");
+        errorMessage = e.message || "Error connecting to Gemini API validation.";
     } finally {
-        if (btnText) btnText.textContent = 'Test Key';
         if (spinner) spinner.classList.add('hidden');
+        if (isSuccess) {
+            if (testBtn) {
+                testBtn.classList.remove('!bg-red-600', '!border-red-600', 'dark:!bg-red-600', 'dark:!border-red-600');
+                testBtn.classList.add('!bg-emerald-600', '!text-white', '!border-emerald-600', 'dark:!bg-emerald-600', 'dark:!border-emerald-600');
+            }
+            if (btnText) btnText.textContent = 'Verified ✓';
+            showToast("Gemini API key verified successfully!");
+        } else {
+            if (testBtn) {
+                testBtn.classList.remove('!bg-emerald-600', '!border-emerald-600', 'dark:!bg-emerald-600', 'dark:!border-emerald-600');
+                testBtn.classList.add('!bg-red-600', '!text-white', '!border-red-600', 'dark:!bg-red-600', 'dark:!border-red-600');
+            }
+            if (btnText) btnText.textContent = 'Failed ✗';
+            showToast(errorMessage || "Failed to validate Gemini API key.");
+        }
     }
 }
 
@@ -4763,6 +4836,7 @@ window.onload = async () => {
             showToast("Gemini API key encrypted and saved!");
             settingsKeyInput.value = '';
         });
+        settingsKeyInput.addEventListener('input', resetTestKeyButtonState);
         settingsKeyInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') saveGeminiKeyBtn.click();
         });
