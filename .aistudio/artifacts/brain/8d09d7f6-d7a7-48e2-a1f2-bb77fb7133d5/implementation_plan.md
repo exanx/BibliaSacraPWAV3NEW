@@ -1,134 +1,183 @@
-# AI Feature Customization, Minimal UI Redesign & Encrypted Gemini API Key Integration
+# Personal Space Slider, Reading Progress & AI Thinking Configuration (Revised)
 
-Streamline the Biblia Sacra user experience by removing top-bar and sidebar clutter, consolidating search into a fast mobile-ready search popout, providing an AI feature toggle in Settings, transforming the AI scripture search into a minimal full-width interface, and requiring a personal Gemini API key with AES-GCM client-side encryption and cloud sync.
+A spiritual reading companion featuring a discreet right-edge slider button that expands into a full Personal Space drawer (opposite the main navigation sidebar) on mobile and desktop, ultra-low write cloud sync coalescing, Catholic 73-book scripture progress tracking, granular Gemini model and thinking token configuration, and safe settings restoration without user data loss.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following decisions govern this revision:
-> - **Sidebar Decluttering**: Remove the separate large "AI Scripture Search" button located above Voice Reader. AI search is anchored directly to the main search bar and the small AI search sparkle button adjacent to it.
-> - **Top Menu Bar Quick Search Popout**: Replace the top-bar AI button with a fast **Quick Search** button (magnifying glass) that opens a lightweight search popout/modal containing the main scripture search bar and its companion AI button, giving mobile users instant access to navigation and search without opening the full sidebar.
-> - **Top Menu Bar Quote Icon**: Removed from the top header; Quote Studio remains accessible in verse selection popups and the sidebar.
-> - **Settings AI Toggle**: Toggling "Show AI Scripture Search" off hides all AI buttons (including the companion button on the search bar) and disables the `Ctrl+K` / `Cmd+K` shortcut.
-> - **Personal Gemini API Key**: Kept on-device encrypted via AES-GCM 256-bit (Web Crypto API) and synced encrypted to Firestore if signed in. Guidance and entry are accessible both in Settings and as an inline prompt in the AI search modal.
-> - **Minimal AI Search Interface**: Full-width search input, icon-only submit button (no text), and zero sample topic chips.
+> The following revisions have been incorporated:
+> - **Opposite-Side Slider Button**: Positioned fixed on the **right edge** (opposite the main left sidebar). It renders as a sleek, compact tab handle that expands into the full Personal Space panel on click across both mobile and desktop.
+> - **Ultra-Low Write Cloud Sync**: Uses our coalesced lifecycle architecture (`dirtySyncSections`, 60-second debouncing, and `visibilitychange` flush) with a compact aggregated schema. Zero repeated writes while reading; a single batched document write stores streak, daily goal, total chapters, and completed book counters.
+> - **Cloud Sync Switch**: Allows turning synchronization ON or OFF at any time. When OFF, all operations remain strictly local in IndexedDB with zero network requests.
+> - **AI Model & Thinking Tokens**: Configurable Gemini model selection with thinking token presets (`Off` / `Fast` / `Deep Theology` / `Custom`) and an interactive slider (0 to 2048 tokens).
+> - **Non-Destructive Reset**: Dedicated "Restore Settings to Default" button in Settings that resets themes, typography, and AI options while preserving all user records (bookmarks, notes, highlights, reading progress, and goals).
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**:
-  1. **Top Bar Transformation**: Removes the Quote Maker icon and replaces the AI button with a Quick Search button (`open-quick-search-btn`) that launches an instant search modal on mobile.
-  2. **Sidebar Streamlining**: Removes the duplicate large AI button above Voice Reader; keeps the search experience cleanly anchored to the main input and its companion AI button.
-  3. **AI Visibility Toggle in Settings**: Adds a toggle to hide all AI affordances and disable keyboard shortcuts for readers wanting a purely traditional reading experience.
-  4. **Minimal AI Scripture Search**: Refactors the AI search modal to be full-width, clean, and distraction-free, with no sample topic chips and a compact icon button.
-  5. **Encrypted Gemini API Key Management**: Secures user keys using browser AES-GCM encryption before storing locally or syncing to Firestore, with step-by-step guidance to get a free key from Google AI Studio.
-- **Target Audience**: Catholic scripture readers, researchers, and students who want rapid scripture lookup, minimal visual clutter, and privacy-respecting AI tools.
-- **Key Value**: Provides effortless mobile search, removes redundant buttons, respects user privacy with encrypted credentials, and gives users full control over AI visibility.
+- **Right-Edge Slider Handle**: A discreet vertical handle pinned to the right edge of the screen displaying a subtle icon and reading streak indicator. Clicking it smoothly slides open the Personal Space drawer without disturbing the reader's view.
+- **Ultra-Efficient Cloud Synchronization**:
+  - Eliminates redundant Firestore reads and writes by treating local IndexedDB as the primary high-speed source of truth.
+  - Progress updates are queued in memory and committed to the user's Firestore document only during idle lulls, tab backgrounding (`visibilitychange`), or page unload.
+  - A persistent Cloud Sync toggle gives users complete privacy control.
+- **73-Book Catholic Scripture Progress**:
+  - Tracks reading across the 1,334 chapters of the complete Catholic canon (1,074 Old Testament chapters, including Deuterocanonical books, and 260 New Testament chapters).
+  - Displays canonical section completion bars (Pentateuch, Historical, Wisdom, Prophets, Gospels, Epistles).
+- **Daily Habit & Streak Engine**:
+  - Tracks consecutive daily reading habits.
+  - Configurable daily chapter goal (e.g. 1, 3, or 5 chapters per day) with today's completion ring.
+  - Recent reading history log with 1-click "Resume" affordance.
+- **Granular AI Configuration**:
+  - Model selector (default `gemini-3.1-flash-lite`, with fallbacks to `gemini-2.5-flash-lite`, `gemini-2.5-flash`, etc.).
+  - Thinking tokens controls: Off (0 tokens, ultra-fast ~1s), Fast (512 tokens), Deep Theology (1024 tokens), or Custom (0–2048 slider).
+- **Non-Destructive Reset**:
+  - Reverts typography, spacing, active themes, and AI parameters to pristine defaults while strictly preserving highlights, notes, bookmarks, reading history, and custom bibles.
 
 ---
 
 ## 2. User Experience & Visual Design
 
-### Key User Flows
+### 1. The Right-Edge Slider Handle & Expanding Drawer
+- **Collapsed Handle**: Pinned to `fixed right-0 top-1/2 -translate-y-1/2 z-40`.
+  - Styled with subtle glassmorphism (`glass-panel`), rounded left border (`rounded-l-2xl`), and gentle hover expansion.
+  - Displays a clean scripture/progress glyph and small streak flame number (e.g., `5`).
+  - Accessible on all screen sizes (mobile, tablet, desktop) without occluding reading text.
+- **Expanded Drawer**:
+  - Clicking the handle smoothly slides out a `w-full sm:w-[420px]` panel from the right edge with backdrop blur (`z-50`).
+  - Features a clean close button and quick collapse handle.
+  - Contains 4 well-structured sections:
+    1. **Profile & Sync Header**: Avatar, email / local guest label, Sign In button, and Cloud Sync ON/OFF toggle switch.
+    2. **Habit & Streak Ring**: Active streak days, today's chapter goal progress, and target adjuster (`-` / `+`).
+    3. **Catholic Canon Progress**: Overall percentage of the 73 books read, OT/NT breakdown meters, and canonical category bars.
+    4. **Reading History**: Chronological log of recent chapters with relative timestamps ("20m ago", "Yesterday") and 1-click "Resume" buttons.
 
-1. **Mobile Quick Search (Top Bar)**:
-   - User taps the magnifying glass icon in the top header.
-   - A smooth, lightweight popout/modal appears containing the main search bar (`Jn 3:16`, `Genesis 1`, or topic keywords) with auto-focus.
-   - Beside the input is the small AI button: users can either jump directly to a chapter/verse or tap the AI button to search by natural language subject.
-2. **Streamlined Sidebar**:
-   - The sidebar displays:
-     - **Search Section**: Input bar with "GO" and companion small AI sparkle button.
-     - **Navigation**: Book & Chapter selector.
-     - **Translation**: Catholic translation dropdown.
-     - **Quick Actions**: Voice Reader, Notes & Highlights, Bookmarks, Quote Studio, Dictionary/Wikipedia, and Settings (the redundant standalone AI button above Voice Reader is gone).
-3. **Settings AI Visibility & Key Management**:
-   - **"AI Features" Section**:
-     - Toggle: *"Show AI Scripture Search"* (turns off all AI buttons and `Ctrl+K`).
-     - *"Gemini API Key"*: Masked input with edit/clear buttons, test status badge, and guide link (`https://aistudio.google.com/app/apikey`).
-4. **Encrypted Key Onboarding**:
-   - When a user opens AI search without an API key, the modal displays a welcoming, minimal card guiding them to get a free key, paste it, and save with AES-GCM encryption.
-5. **Minimal AI Scripture Search**:
-   - Full-width search bar with magnifying glass icon.
-   - Compact submit button with search arrow/icon and spinner (no "Find Verses" text button).
-   - Zero sample topic chips.
-   - Instant thematic summary + canonical verse cards with one-tap jump to chapter.
+### 2. AI Settings in Settings Modal
+- Located inside the `AI & Audio` tab of Settings.
+- **Model Selector**: Dropdown featuring Gemini 3.1 Flash Lite, 2.5 Flash Lite, 2.5 Flash, and Flash Latest.
+- **Thinking Token Presets**:
+  - `Off (Fastest, ~1s)`: Sets budget to 0 for instant scripture lookups.
+  - `Fast (512 tokens)`: Balanced reasoning for complex topics.
+  - `Deep Theology (1024 tokens)`: In-depth biblical typology and theological synthesis.
+  - `Custom`: Displays the numeric range slider (0 to 2048).
+- **Max Output Tokens**: Dropdown (1024, 2048, 4096).
 
-```
-TOP BAR (Mobile):
-┌────────────────────────────────────────────────────────┐
-│ [☰ Menu]  [🔍 Quick Search]   Genesis 1 ▾   [⚙ Settings] │
-└──────────────────────────┬─────────────────────────────┘
-                           │ Opens
-                           ▼
-QUICK SEARCH POPOUT:
-┌────────────────────────────────────────────────────────┐
-│  Search Scripture or Topic                          ✕  │
-│ ┌──────────────────────────────────────┬────┬────────┐ │
-│ │ e.g. "John 3:16" or "Eucharist"      │ GO │ [✨ AI] │ │
-│ └──────────────────────────────────────┴────┴────────┘ │
-└────────────────────────────────────────────────────────┘
-```
+### 3. Non-Destructive "Restore Settings to Default"
+- Positioned in Settings with a distinct secondary card and clear description.
+- Restores: font family (`Inter`), size (`1.125rem`), line ratio (`1.75`), content width (`100%`), curated theme (`amoled_black`), accent color (`indigo`), live effect (`theme_default`), AI model (`gemini-3.1-flash-lite`), and thinking tokens (`0`).
+- Leaves untouched: bookmarks, highlights, categories, personal notes, offline cached Bibles, custom bibles, reading streak, goals, and history.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+## 3. Cloud Sync Architecture: Ultra-Low Write Strategy
 
-- **Decision 1: Quick Search Popout vs Opening Full Sidebar**
-  - *Chosen Approach*: Add a focused Quick Search modal triggered by the top bar magnifying glass.
-  - *Why*: Allows mobile users to jump to any chapter or verse instantly in 2 taps without scrolling through the multi-section sidebar drawer.
-- **Decision 2: Companion AI Button on Search Bar**
-  - *Chosen Approach*: Position the small AI sparkle button directly alongside the search bar (in both the sidebar and the Quick Search popout) while removing the large duplicate button above Voice Reader.
-  - *Why*: Eliminates redundant buttons while keeping AI search naturally accessible wherever search occurs.
-- **Decision 3: Client-Side Web Crypto AES-GCM Encryption**
-  - *Chosen Approach*: Encrypt personal API keys client-side before persisting in `localStorage` or syncing to Firebase.
-  - *Why*: Protects user keys against plaintext inspection and ensures cloud sync remains private and secure.
+Firestore charges by document reads and writes. To make cloud sync ultra-efficient:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Ultra-Low Write Pipeline                        │
+│                                                                        │
+│   User reads chapters & marks goals                                    │
+│                     │                                                  │
+│                     ▼                                                  │
+│   ┌──────────────────────────────────┐                                 │
+│   │ 1. Instant Local IndexedDB Write │ (0ms, 0 network, offline-first) │
+│   └─────────────────┬────────────────┘                                 │
+│                     │                                                  │
+│                     ▼                                                  │
+│   ┌──────────────────────────────────┐                                 │
+│   │ 2. dirtySyncSections.add('prog') │ In-memory flag; no network call │
+│   └─────────────────┬────────────────┘                                 │
+│                     │                                                  │
+│                     ▼                                                  │
+│   ┌──────────────────────────────────┐                                 │
+│   │ 3. Coalescing Timer (60s idle)   │ Coalesces 10+ chapter reads     │
+│   │    OR visibilitychange / unload  │ into ONE single document write! │
+│   └─────────────────┬────────────────┘                                 │
+│                     │                                                  │
+│                     ▼                                                  │
+│   ┌──────────────────────────────────┐                                 │
+│   │ 4. Single Document Update        │ Firestore: users/{uid}          │
+│   │    { progress: compactAggregate }│ (1 write total per session)     │
+│   └──────────────────────────────────┘                                 │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Compact Aggregated Schema**: Instead of writing separate documents for every chapter, all progress is serialized into a single compact JSON field under `users/{uid}`:
+  ```json
+  {
+    "progress": {
+      "streak": 5,
+      "dailyTarget": 3,
+      "todayCount": 2,
+      "lastActiveDate": "2026-10-29",
+      "totalReadChapters": 84,
+      "readChapters": ["Genesis_1", "Genesis_2", "John_1", "..."],
+      "history": [
+        { "book": "John", "chapter": 1, "time": 1729000000 }
+      ],
+      "updatedAt": 1729000000
+    }
+  }
+  ```
+- **Sync Toggle Guard**: If `cloudSyncEnabled === false`, all network push/pull functions immediately exit without making any network requests.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+## 4. Technical Architecture & Component Mapping
+
+### Component Layout
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                                CLIENT (Browser)                              │
-│                                                                              │
-│  ┌──────────────────────┐   ┌─────────────────────┐   ┌───────────────────┐  │
-│  │   Top Header / Nav   │   │ Quick Search Popout │   │  AI Search Modal  │  │
-│  │  - Menu Burger       │──▶│ - Direct Verse Input│──▶│ - Full-width Input│  │
-│  │  - Quick Search [🔍] │   │ - "GO" Button       │   │ - Icon-only Submit│  │
-│  │  - Chapter Selector  │   │ - Companion [✨ AI] │   │ - Key Setup Guide │  │
-│  │  - Settings [⚙]      │   └─────────────────────┘   └─────────┬─────────┘  │
-│  └──────────────────────┘                                       │            │
-│             │                                                   ▼            │
-│             ▼                                      ┌──────────────────────┐  │
-│  ┌──────────────────────┐                          │   Web Crypto Suite   │  │
-│  │    Settings Modal    │                          │ - AES-GCM 256-bit    │  │
-│  │ - AI Feature Toggle  │                          │ - Local & Cloud Sync │  │
-│  │ - Encrypted Key Mgmt │                          └──────────┬───────────┘  │
-│  └──────────────────────┘                                     │              │
-└───────────────────────────────────────────────────────────────┼──────────────┘
-                                                                │ POST /api/ai/search-verses
-                                                                │ Header: x-gemini-api-key
-                                                                ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                            SERVER (Node / Express)                           │
-│  - Receives decrypted user key in request header                             │
-│  - Executes Gemini 3.1 Flash Lite (with fallback) with Catholic canon prompt │
-│  - Returns structured JSON to client                                         │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                         Viewport (100vw)                               │
+│                                                                        │
+│   ┌──────────┐    ┌───────────────────────────────────┐    ┌───────┐   │
+│   │ Left     │    │       Main Scripture Reading      │    │ Right │   │
+│   │ Sidebar  │    │              Canvas               │    │ Slider│   │
+│   │ (Books)  │    │                                   │    │ Handle│   │
+│   │          │    │                                   │    │ (Stats│   │
+│   │          │    │                                   │    │ Streak│   │
+│   │          │    │                                   │    │ Goal) │   │
+│   └──────────┘    └───────────────────────────────────┘    └───┬───┘   │
+│                                                                │       │
+│                                                                ▼       │
+│                                                   ┌────────────────┐   │
+│                                                   │ Expanded       │   │
+│                                                   │ Personal Space │   │
+│                                                   │ Drawer         │   │
+│                                                   │ • Profile/Sync │   │
+│                                                   │ • Streak Meter │   │
+│                                                   │ • 73-Book Canon│   │
+│                                                   │ • History Log  │   │
+│                                                   └────────────────┘   │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Verification Plan
-1. **Header Checks**: Verify Quote Maker is removed from top bar; verify Quick Search button appears on mobile and opens the search popout.
-2. **Sidebar Checks**: Verify large AI button above Voice Reader is removed; verify search bar contains the companion AI sparkle button.
-3. **Settings Toggle**:
-   - Toggle AI OFF -> verify companion AI buttons disappear from search bars and popouts; verify `Ctrl+K` is disabled.
-   - Toggle AI ON -> verify AI buttons and shortcut are restored.
-4. **Encrypted Gemini Key**:
-   - Verify setup prompt in AI modal when key is empty.
-   - Verify key input, test validation, and AES-GCM encryption in storage.
-   - Verify cloud sync when signed into Firebase.
-5. **Minimal AI Search**:
-   - Verify search bar is full-width with icon-only submit button and no sample topic pills.
-   - Verify verse clicking jumps directly to the chapter in CPDV.
-6. **Code Compilation**: Run `compile_applet`, `node -c`, and `lint_applet`.
+### Execution Steps
+
+1. **HTML Architecture (`/index.html`)**:
+   - Insert the right-edge slider button (`#personal-space-handle`).
+   - Insert the full sliding drawer (`#personal-space-drawer`) with overlay backdrop.
+   - Add the AI Model selector, Thinking Token Preset buttons, numeric slider, and token ceiling inside `settings-panel-ai`.
+   - Update the "Reset Settings" section in `settings-panel-storage` with clear non-destructive labeling.
+
+2. **Client State & Progress Engine (`/app.js`)**:
+   - Initialize `readingProgress`: `{ streak: 0, dailyTarget: 3, todayCount: 0, lastActiveDate: '', readChapters: {}, history: [] }`.
+   - Initialize `cloudSyncEnabled` (default `true`, stored in settings).
+   - Implement Catholic 73-book canon chapter counts (Old Testament 1,074 chapters, New Testament 260 chapters = 1,334 chapters).
+   - Track reading events when chapters load/finish and update streak/daily count.
+   - Wire slider handle toggle animations (slide in/out with smooth cubic bezier).
+   - Wire Cloud Sync On/Off toggle into `pushToCloud()` and `pullFromCloud()`.
+   - Connect AI thinking token settings to `callGeminiDirect()` and backend proxy payload.
+   - Refactor `resetSettings()` to strictly reset UI & AI preferences while preserving user database content.
+
+3. **Backend Route Support (`/server.js`)**:
+   - Support `thinkingBudget`, `maxOutputTokens`, and `model` forwarded from the client in `/api/ai/search-verses`.
+
+4. **Verification**:
+   - Verify slider button click expands and collapses drawer seamlessly on mobile and desktop.
+   - Verify cloud sync toggle completely pauses/resumes Firestore sync.
+   - Verify Catholic Bible progress metrics compute accurately for 73 books.
+   - Verify AI search runs with user-configured thinking tokens (0 for instant, >0 for deep thinking).
+   - Verify non-destructive reset restores defaults without clearing notes or reading history.

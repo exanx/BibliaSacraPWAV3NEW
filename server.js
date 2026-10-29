@@ -94,10 +94,19 @@ app.post('/api/ai/validate-key', async (req, res) => {
   }
 });
 
+// Server-side fast cache for query results
+const serverQueryCache = new Map();
+
 // AI Bible Verse Semantic Search Endpoint
 app.post('/api/ai/search-verses', async (req, res) => {
   try {
-    const { query, translation = 'Catholic Public Domain Version' } = req.body;
+    const { 
+      query, 
+      translation = 'Catholic Public Domain Version',
+      model: requestedModel,
+      thinkingBudget: requestedBudget,
+      maxOutputTokens: requestedMaxTokens
+    } = req.body;
     const userApiKey = (req.headers['x-gemini-api-key'] || req.body.apiKey || '').trim();
 
     const ai = getGenAIClient(userApiKey);
@@ -113,6 +122,18 @@ app.post('/api/ai/search-verses', async (req, res) => {
     }
 
     const cleanQuery = query.trim();
+    const targetModel = requestedModel || 'gemini-3.1-flash-lite';
+    const effectiveThinkingBudget = typeof requestedBudget === 'number' ? requestedBudget : 0;
+    const effectiveMaxTokens = typeof requestedMaxTokens === 'number' ? requestedMaxTokens : 2048;
+
+    const cacheKey = `${cleanQuery.toLowerCase()}_${translation.toLowerCase()}_${targetModel}_${effectiveThinkingBudget}`;
+
+    // Return instant cached response if available
+    if (serverQueryCache.has(cacheKey)) {
+      console.log(`[AI Search] Serving cached verses for query: "${cleanQuery}"`);
+      return res.json(serverQueryCache.get(cacheKey));
+    }
+
     const prompt = `User search subject / question: "${cleanQuery}".
 Requested Bible translation: ${translation}.
 Find 4 to 8 of the most relevant, direct, and spiritually profound Bible verses from the 73 books of the Catholic Bible canon that address this subject.`;
@@ -135,6 +156,8 @@ Also provide a concise 1-2 sentence overarching biblical summary of what Catholi
     const schemaConfig = {
       systemInstruction,
       temperature: 0.2,
+      maxOutputTokens: effectiveMaxTokens,
+      thinkingConfig: { thinkingBudget: effectiveThinkingBudget },
       responseMimeType: 'application/json',
       responseSchema: {
         type: Type.OBJECT,
@@ -166,8 +189,15 @@ Also provide a concise 1-2 sentence overarching biblical summary of what Catholi
       }
     };
 
-    // Prioritize Gemini Flash Lite for ultra-fast, low-latency verse retrieval, with full fallback
-    const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
+    // Prioritize user's requested model, with fast fallback list
+    const candidateModels = [
+      targetModel,
+      'gemini-3.1-flash-lite',
+      'gemini-flash-lite-latest',
+      'gemini-2.5-flash-lite',
+      'gemini-2.5-flash',
+      'gemini-flash-latest'
+    ].filter((m, idx, arr) => arr.indexOf(m) === idx);
     let lastError = null;
     let responseText = null;
 
@@ -195,6 +225,12 @@ Also provide a concise 1-2 sentence overarching biblical summary of what Catholi
     }
 
     const parsed = JSON.parse(responseText);
+    serverQueryCache.set(cacheKey, parsed);
+    // Limit cache to 100 entries
+    if (serverQueryCache.size > 100) {
+      const oldestKey = serverQueryCache.keys().next().value;
+      serverQueryCache.delete(oldestKey);
+    }
     return res.json(parsed);
   } catch (error) {
     console.error('AI verse search error:', error);

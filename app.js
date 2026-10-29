@@ -306,6 +306,61 @@ let customFonts = [];
 let currentRefMode = 'dict';
 let settingsUpdatedAt = 0;
 
+// Cloud Sync Control
+let cloudSyncEnabled = true;
+
+// Personal Space & 73-Book Catholic Scripture Progress
+let readingProgress = {
+    streak: 0,
+    dailyTarget: 3,
+    todayCount: 0,
+    lastActiveDate: '',
+    readChapters: {},
+    history: []
+};
+
+// AI Model & Thinking Configuration
+let aiSettingsConfig = {
+    model: 'gemini-3.1-flash-lite',
+    thinkingBudget: 0,
+    thinkingPreset: 'off',
+    maxOutputTokens: 2048
+};
+
+// 73-Book Catholic Canon Canonical Groupings (1,334 Chapters Total)
+const CATHOLIC_CANONICAL_SECTIONS = [
+    {
+        name: "Pentateuch (Law)",
+        books: ["Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy"],
+        totalChapters: 187
+    },
+    {
+        name: "Historical Books",
+        books: ["Joshua", "Judges", "Ruth", "1 Samuel", "2 Samuel", "1 Kings", "2 Kings", "1 Chronicles", "2 Chronicles", "Ezra", "Nehemiah", "Tobit", "Judith", "Esther", "1 Maccabees", "2 Maccabees"],
+        totalChapters: 318
+    },
+    {
+        name: "Wisdom & Poetry",
+        books: ["Job", "Psalms", "Proverbs", "Ecclesiastes", "Song of Solomon", "Wisdom", "Sirach"],
+        totalChapters: 319
+    },
+    {
+        name: "Prophets",
+        books: ["Isaiah", "Jeremiah", "Lamentations", "Baruch", "Ezekiel", "Daniel", "Hosea", "Joel", "Amos", "Obadiah", "Jonah", "Micah", "Nahum", "Habakkuk", "Zephaniah", "Haggai", "Zechariah", "Malachi"],
+        totalChapters: 250
+    },
+    {
+        name: "Gospels & Acts",
+        books: ["Matthew", "Mark", "Luke", "John", "Acts"],
+        totalChapters: 117
+    },
+    {
+        name: "Epistles & Revelation",
+        books: ["Romans", "1 Corinthians", "2 Corinthians", "Galatians", "Ephesians", "Philippians", "Colossians", "1 Thessalonians", "2 Thessalonians", "1 Timothy", "2 Timothy", "Titus", "Philemon", "Hebrews", "James", "1 Peter", "2 Peter", "1 John", "2 John", "3 John", "Jude", "Revelation"],
+        totalChapters: 143
+    }
+];
+
 let highlights = {}, categories = {}, bookmarks = {}, lastRead = { book: 'Genesis', chapter: '1', verse: '1', timestamp: 0 }, staticBookData = {};
 
 let toastTimeout, currentHighlightsCategory = null, currentHighlightsSearch = '';
@@ -557,9 +612,9 @@ function scheduleCloudFlush(immediate = false) {
 }
 
 async function flushPendingCloudUpdates() {
-    if (!currentUser || !window.firebase?.db || isFlushingCloud) return;
+    if (!currentUser || !cloudSyncEnabled || !window.firebase?.db || isFlushingCloud) return;
     if (dirtySyncSections.size === 0) {
-        updateSyncStatusUI('synced');
+        updateSyncStatusUI(cloudSyncEnabled ? 'synced' : 'offline');
         return;
     }
 
@@ -578,6 +633,7 @@ async function flushPendingCloudUpdates() {
     if (dirtySyncSections.has('bookmarks')) payload.bookmarks = bookmarks;
     if (dirtySyncSections.has('categories')) payload.categories = categories;
     if (dirtySyncSections.has('lastRead')) payload.lastRead = lastRead;
+    if (dirtySyncSections.has('progress')) payload.progress = buildProgressObject();
 
     const sendingSections = new Set(dirtySyncSections);
 
@@ -608,7 +664,7 @@ async function flushPendingCloudUpdates() {
 }
 
 async function pullFromCloud(force = false) {
-    if (!currentUser || !window.firebase?.db || !window.firebase?.getDoc) return;
+    if (!currentUser || !cloudSyncEnabled || !window.firebase?.db || !window.firebase?.getDoc) return;
 
     const now = Date.now();
     if (!force && (now - lastCloudReadTime < CLOUD_READ_THROTTLE)) {
@@ -632,6 +688,7 @@ async function pullFromCloud(force = false) {
             dirtySyncSections.add('bookmarks');
             dirtySyncSections.add('categories');
             dirtySyncSections.add('lastRead');
+            dirtySyncSections.add('progress');
             scheduleCloudFlush(true);
         }
 
@@ -644,12 +701,24 @@ async function pullFromCloud(force = false) {
 }
 
 function scheduleLastReadSync() {
-    if (!currentUser) return;
+    if (!currentUser || !cloudSyncEnabled) return;
     if (lastReadSyncTimer) clearTimeout(lastReadSyncTimer);
     lastReadSyncTimer = setTimeout(() => {
         dirtySyncSections.add('lastRead');
         scheduleCloudFlush(false);
     }, 20000); // 20s stationary reading before queuing position
+}
+
+function buildProgressObject() {
+    return {
+        streak: readingProgress.streak || 0,
+        dailyTarget: readingProgress.dailyTarget || 3,
+        todayCount: readingProgress.todayCount || 0,
+        lastActiveDate: readingProgress.lastActiveDate || '',
+        readChapters: readingProgress.readChapters || {},
+        history: (readingProgress.history || []).slice(0, 30),
+        updatedAt: Date.now()
+    };
 }
 
 async function saveToLocalDB() {
@@ -658,19 +727,23 @@ async function saveToLocalDB() {
         highlights, 
         categories, 
         bookmarks, 
-        lastRead 
+        lastRead,
+        progress: buildProgressObject(),
+        cloudSyncEnabled,
+        aiSettingsConfig
     }; 
     await localDB.set('bible_data', dataToSave); 
 }
 
 function pushToCloud(updates = {}, immediate = false) {
-    if (!currentUser) return;
+    if (!currentUser || !cloudSyncEnabled) return;
     for (const key in updates) {
         if (key === 'settings' || key.startsWith('settings.')) dirtySyncSections.add('settings');
         else if (key === 'lastRead' || key.startsWith('lastRead.')) dirtySyncSections.add('lastRead');
         else if (key === 'highlights' || key.startsWith('highlights.')) dirtySyncSections.add('highlights');
         else if (key === 'bookmarks' || key.startsWith('bookmarks.')) dirtySyncSections.add('bookmarks');
         else if (key === 'categories' || key.startsWith('categories.')) dirtySyncSections.add('categories');
+        else if (key === 'progress' || key.startsWith('progress.')) dirtySyncSections.add('progress');
         else dirtySyncSections.add(key);
     }
     scheduleCloudFlush(immediate);
@@ -694,6 +767,8 @@ function buildSettingsObject() {
         customFonts,
         customBg: currentCustomBg,
         customText: currentCustomText,
+        cloudSyncEnabled: cloudSyncEnabled,
+        aiConfig: aiSettingsConfig,
         updatedAt: settingsUpdatedAt
     };
 }
@@ -724,6 +799,10 @@ function applyLoadedSettings(s, skipSave = false) {
     
     if (s.activeThemeId && FULL_THEMES[s.activeThemeId]) {
         currentActiveThemeId = s.activeThemeId;
+        const ft = FULL_THEMES[s.activeThemeId];
+        if (!s.customBg && !s.customText) {
+            applyCustomColors(ft.bg, ft.text, true);
+        }
     }
     document.body.dataset.activeTheme = currentActiveThemeId;
     updateFullThemesUI();
@@ -740,6 +819,13 @@ function applyLoadedSettings(s, skipSave = false) {
         encryptedGeminiKey = s.encryptedGeminiKey;
         localStorage.setItem(API_KEY_STORAGE_KEY, JSON.stringify(encryptedGeminiKey));
         updateApiKeyUI();
+    }
+    if (s.cloudSyncEnabled !== undefined) {
+        cloudSyncEnabled = !!s.cloudSyncEnabled;
+    }
+    if (s.aiConfig) {
+        aiSettingsConfig = { ...aiSettingsConfig, ...s.aiConfig };
+        applyAISettingsUI();
     }
 
     if (!skipSave) {
@@ -830,6 +916,26 @@ function smartMerge(cloudData) {
         dirtySyncSections.add('lastRead');
     }
 
+    // Merge Reading Progress & Goals
+    if (cloudData.progress) {
+        const cProg = cloudData.progress;
+        if (!cProg.updatedAt) cProg.updatedAt = 0;
+        if (cProg.updatedAt > (readingProgress.updatedAt || 0)) {
+            const mergedChapters = { ...(readingProgress.readChapters || {}), ...(cProg.readChapters || cProg.chaptersRead || {}) };
+            readingProgress = {
+                ...readingProgress,
+                ...cProg,
+                readChapters: mergedChapters,
+                history: Array.isArray(cProg.history) ? cProg.history : (readingProgress.history || [])
+            };
+            uiNeedsUpdate = true;
+        } else if ((readingProgress.updatedAt || 0) > cProg.updatedAt) {
+            dirtySyncSections.add('progress');
+        }
+    } else {
+        dirtySyncSections.add('progress');
+    }
+
     // Queue any offline changes into a single batched write
     if (dirtySyncSections.size > 0) {
         scheduleCloudFlush(false); 
@@ -839,6 +945,7 @@ function smartMerge(cloudData) {
         saveToLocalDB();
         renderHighlights();
         renderBookmarks();
+        renderPersonalSpaceDrawer();
         
         // Refresh reading view if it matches the screen
         if (document.querySelector('.chapter-heading')) {
@@ -863,11 +970,29 @@ async function loadDataFromLocalDB() {
         bookmarks = data.bookmarks || {};
         if (data.settings) applyLoadedSettings(data.settings, true);
         if (data.lastRead) { lastRead = data.lastRead; updateSelectionText(lastRead.book, lastRead.chapter); }
+        if (data.progress) {
+            readingProgress = {
+                ...readingProgress,
+                ...data.progress,
+                readChapters: data.progress.readChapters || data.progress.chaptersRead || {},
+                history: Array.isArray(data.progress.history) ? data.progress.history : []
+            };
+        }
+        if (typeof data.cloudSyncEnabled === 'boolean') {
+            cloudSyncEnabled = data.cloudSyncEnabled;
+        }
+        if (data.aiSettingsConfig) {
+            aiSettingsConfig = { ...aiSettingsConfig, ...data.aiSettingsConfig };
+        }
+        applyAISettingsUI();
+        renderPersonalSpaceDrawer();
     } else { 
         updateTranslationDropdowns(); 
         updateFontDropdowns(); 
         updateQuoteFontDropdown();
         applyTranslation('cpdv', true); 
+        applyAISettingsUI();
+        renderPersonalSpaceDrawer();
     } 
 }
 
@@ -1292,8 +1417,9 @@ async function fetchChapterHTML(book, chapter) {
     }
     
     currentTranslationName = data.translation_name; 
-    versionSubtitle.textContent = currentTranslationName; 
-    document.getElementById('mobile-version-subtitle').textContent = currentTranslationName;
+    if (versionSubtitle) versionSubtitle.textContent = currentTranslationName; 
+    const mobileSubtitle = document.getElementById('mobile-version-subtitle');
+    if (mobileSubtitle) mobileSubtitle.textContent = currentTranslationName;
     
     const chapterHighlights = {}, chapterBookmarks = {}; const prefix = `${book} ${chapter}:`;
     for (const ref in highlights) { 
@@ -1459,6 +1585,9 @@ async function loadChapter(book, chapter, direction = 'clear', targetVerse = nul
             if (direction === 'next') { const first = loadedChapters[0]; const h = first.getBoundingClientRect().height; first.remove(); mainScrollArea.scrollTop -= h; oldestIndex++; } 
             else if (direction === 'prev') { const last = loadedChapters[loadedChapters.length - 1]; last.remove(); newestIndex--; }
         }
+
+        // Record chapter in Personal Space reading progress and streaks
+        recordChapterRead(book, chapter);
     } catch (err) { if(direction === 'clear') scriptureDisplay.innerHTML = `<div class="text-center p-6 bg-red-50 dark:bg-red-500/10 rounded-xl mt-4"><p class="text-red-500 text-sm">${err.message}</p></div>`; } 
     finally { bottomSentinel.classList.add('opacity-0'); bottomSentinel.innerHTML = ''; topSentinel.classList.add('opacity-0'); topSentinel.innerHTML = ''; setTimeout(() => { isFetching = false; }, 50); }
 }
@@ -1673,6 +1802,337 @@ function renderFullThemes(category = currentThemeCategory) {
         card.addEventListener('click', () => {
             applyFullTheme(card.dataset.themeId);
         });
+    });
+}
+
+function switchSettingsTab(tabName) {
+    const panels = {
+        themes: document.getElementById('settings-panel-themes'),
+        reading: document.getElementById('settings-panel-reading'),
+        ai: document.getElementById('settings-panel-ai'),
+        storage: document.getElementById('settings-panel-storage')
+    };
+
+    Object.keys(panels).forEach(key => {
+        const panel = panels[key];
+        if (panel) {
+            panel.classList.toggle('hidden', key !== tabName);
+        }
+    });
+
+    document.querySelectorAll('.settings-nav-tab').forEach(btn => {
+        const isActive = btn.dataset.tab === tabName;
+        btn.classList.toggle('bg-primary', isActive);
+        btn.classList.toggle('text-white', isActive);
+        btn.classList.toggle('shadow-xs', isActive);
+        btn.classList.toggle('text-gray-600', !isActive);
+        btn.classList.toggle('dark:text-gray-400', !isActive);
+        btn.classList.toggle('hover:bg-gray-100', !isActive);
+        btn.classList.toggle('dark:hover:bg-white/5', !isActive);
+    });
+
+    const scrollBody = document.getElementById('settings-scroll-body');
+    if (scrollBody) scrollBody.scrollTop = 0;
+}
+
+function openPersonalSpaceDrawer() {
+    if (window.innerWidth < 1024) toggleMobileSidebar(false);
+    const drawer = document.getElementById('personal-space-drawer');
+    const backdrop = document.getElementById('personal-space-backdrop');
+    if (!drawer || !backdrop) return;
+
+    backdrop.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        backdrop.classList.remove('opacity-0');
+        backdrop.classList.add('opacity-100');
+        drawer.classList.remove('translate-x-full');
+    });
+
+    renderPersonalSpaceDrawer();
+}
+
+function closePersonalSpaceDrawer() {
+    const drawer = document.getElementById('personal-space-drawer');
+    const backdrop = document.getElementById('personal-space-backdrop');
+    if (!drawer || !backdrop) return;
+
+    drawer.classList.add('translate-x-full');
+    backdrop.classList.remove('opacity-100');
+    backdrop.classList.add('opacity-0');
+    setTimeout(() => {
+        backdrop.classList.add('hidden');
+    }, 300);
+}
+
+function calculateCatholicBibleProgress() {
+    const readMap = readingProgress.readChapters || {};
+    let totalRead = 0;
+    let otRead = 0;
+    let ntRead = 0;
+    const booksStarted = new Set();
+
+    Object.keys(readMap).forEach(key => {
+        const item = readMap[key];
+        if (item && item.book) {
+            totalRead++;
+            booksStarted.add(item.book);
+            if (BIBLE_BOOKS["Old Testament"] && BIBLE_BOOKS["Old Testament"][item.book]) {
+                otRead++;
+            } else if (BIBLE_BOOKS["New Testament"] && BIBLE_BOOKS["New Testament"][item.book]) {
+                ntRead++;
+            }
+        }
+    });
+
+    const totalPct = Math.min(100, (totalRead / 1334) * 100);
+    const otPct = Math.min(100, (otRead / 1074) * 100);
+    const ntPct = Math.min(100, (ntRead / 260) * 100);
+
+    const sectionStats = CATHOLIC_CANONICAL_SECTIONS.map(sec => {
+        let secRead = 0;
+        sec.books.forEach(bk => {
+            const maxCh = (BIBLE_BOOKS["Old Testament"][bk] || BIBLE_BOOKS["New Testament"][bk] || 0);
+            for (let c = 1; c <= maxCh; c++) {
+                if (readMap[`${bk}_${c}`]) secRead++;
+            }
+        });
+        const pct = Math.min(100, (secRead / sec.totalChapters) * 100);
+        return { ...sec, readCount: secRead, percent: pct };
+    });
+
+    return {
+        totalRead,
+        totalChapters: 1334,
+        totalPercent: totalPct,
+        otRead,
+        otTotal: 1074,
+        otPercent: otPct,
+        ntRead,
+        ntTotal: 260,
+        ntPercent: ntPct,
+        booksCount: booksStarted.size,
+        sectionStats
+    };
+}
+
+function formatRelativeTime(ts) {
+    if (!ts) return '';
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 172800) return 'Yesterday';
+    return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function renderPersonalSpaceDrawer() {
+    // 1. Update Handle streak badge and pill
+    const streakNum = readingProgress.streak || 0;
+    const handleBadge = document.getElementById('handle-streak-badge');
+    if (handleBadge) handleBadge.textContent = `${streakNum}d`;
+    document.querySelectorAll('.personal-space-streak-pill').forEach(el => {
+        el.textContent = `${streakNum}d streak`;
+    });
+
+    // 2. User & Auth in Drawer
+    const userText = document.getElementById('drawer-user-status-text');
+    if (userText) {
+        userText.textContent = currentUser ? (currentUser.displayName || currentUser.email || 'Signed in') : 'Local Guest Reader';
+    }
+    const authBtn = document.getElementById('drawer-auth-btn');
+    if (authBtn) {
+        authBtn.textContent = currentUser ? 'Account' : 'Sign In';
+    }
+
+    // 3. Cloud Sync Toggle & Badge
+    const syncToggle = document.getElementById('drawer-cloud-sync-toggle');
+    if (syncToggle) syncToggle.checked = cloudSyncEnabled;
+
+    const syncBadge = document.getElementById('drawer-sync-badge');
+    if (syncBadge) {
+        if (!cloudSyncEnabled) {
+            syncBadge.textContent = 'Paused / Off';
+            syncBadge.className = 'text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-500 border border-gray-200 dark:border-white/10';
+        } else if (currentUser) {
+            syncBadge.textContent = 'Active';
+            syncBadge.className = 'text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20';
+        } else {
+            syncBadge.textContent = 'Local Only';
+            syncBadge.className = 'text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20';
+        }
+    }
+
+    const syncTimeLabel = document.getElementById('drawer-sync-time-label');
+    if (syncTimeLabel) {
+        if (!cloudSyncEnabled) syncTimeLabel.textContent = 'Status: Cloud Sync Disabled';
+        else if (lastSyncedTime) syncTimeLabel.textContent = `Last sync: ${formatRelativeTime(lastSyncedTime)}`;
+        else syncTimeLabel.textContent = currentUser ? 'Status: Pending First Sync' : 'Status: Local Offline Storage';
+    }
+
+    // 4. Streak & Daily Goal
+    const streakCount = document.getElementById('drawer-streak-count');
+    if (streakCount) streakCount.textContent = `${streakNum} ${streakNum === 1 ? 'Day' : 'Days'} Streak`;
+
+    const targetNum = readingProgress.dailyTarget || 3;
+    const targetDisplay = document.getElementById('goal-target-display');
+    if (targetDisplay) targetDisplay.textContent = targetNum;
+
+    const todayCount = readingProgress.todayCount || 0;
+    const todayText = document.getElementById('drawer-today-progress-text');
+    if (todayText) todayText.textContent = `${todayCount} / ${targetNum} Chapters`;
+
+    const todayBar = document.getElementById('drawer-today-progress-bar');
+    if (todayBar) {
+        const todayPct = Math.min(100, Math.round((todayCount / targetNum) * 100));
+        todayBar.style.width = `${todayPct}%`;
+    }
+
+    // 5. Catholic Canon Progress
+    const stats = calculateCatholicBibleProgress();
+    const totalPctEl = document.getElementById('drawer-total-percent');
+    if (totalPctEl) totalPctEl.textContent = `${stats.totalPercent.toFixed(1)}%`;
+
+    const totalBar = document.getElementById('drawer-total-progress-bar');
+    if (totalBar) totalBar.style.width = `${stats.totalPercent}%`;
+
+    const chReadEl = document.getElementById('drawer-total-chapters-read');
+    if (chReadEl) chReadEl.textContent = `${stats.totalRead.toLocaleString()} of 1,334 Chapters Read`;
+
+    const bkStartedEl = document.getElementById('drawer-total-books-started');
+    if (bkStartedEl) bkStartedEl.textContent = `${stats.booksCount} of 73 Books`;
+
+    const otPctEl = document.getElementById('drawer-ot-percent');
+    if (otPctEl) otPctEl.textContent = `${stats.otPercent.toFixed(0)}%`;
+    const otBar = document.getElementById('drawer-ot-progress-bar');
+    if (otBar) otBar.style.width = `${stats.otPercent}%`;
+    const otChEl = document.getElementById('drawer-ot-chapters');
+    if (otChEl) otChEl.textContent = `${stats.otRead} / 1,074 ch`;
+
+    const ntPctEl = document.getElementById('drawer-nt-percent');
+    if (ntPctEl) ntPctEl.textContent = `${stats.ntPercent.toFixed(0)}%`;
+    const ntBar = document.getElementById('drawer-nt-progress-bar');
+    if (ntBar) ntBar.style.width = `${stats.ntPercent}%`;
+    const ntChEl = document.getElementById('drawer-nt-chapters');
+    if (ntChEl) ntChEl.textContent = `${stats.ntRead} / 260 ch`;
+
+    // 6. Canonical Groups Meter Strip
+    const canonicalGroupsEl = document.getElementById('drawer-canonical-groups');
+    if (canonicalGroupsEl) {
+        canonicalGroupsEl.innerHTML = stats.sectionStats.map(s => `
+            <div class="space-y-1">
+                <div class="flex justify-between text-[10px] text-gray-600 dark:text-gray-300">
+                    <span class="font-medium truncate pr-1">${s.name}</span>
+                    <span class="font-mono text-gray-400 tabular-nums shrink-0">${s.readCount}/${s.totalChapters} (${s.percent.toFixed(0)}%)</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-white/10 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-primary/80 h-full rounded-full transition-all duration-300" style="width: ${s.percent}%;"></div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // 7. Recent Reading History
+    const historyList = document.getElementById('drawer-reading-history-list');
+    if (historyList) {
+        const hist = readingProgress.history || [];
+        if (hist.length === 0) {
+            historyList.innerHTML = `<p class="text-[11px] text-gray-400 dark:text-gray-500 py-3 text-center">No reading history yet. Read any chapter to start tracking!</p>`;
+        } else {
+            historyList.innerHTML = hist.slice(0, 15).map(item => `
+                <div class="flex items-center justify-between p-2 rounded-xl bg-gray-50/70 dark:bg-white/5 border border-gray-100 dark:border-white/5 hover:border-primary/40 transition-colors">
+                    <div class="min-w-0 pr-2">
+                        <div class="font-bold text-xs text-gray-800 dark:text-gray-200 truncate">${item.book} ${item.chapter}</div>
+                        <div class="text-[10px] text-gray-400 font-mono">${formatRelativeTime(item.time)}</div>
+                    </div>
+                    <button type="button" class="resume-reading-btn text-xs font-semibold py-1 px-2.5 rounded-lg btn-secondary text-primary hover:bg-primary hover:text-white transition-all shrink-0 cursor-pointer" data-book="${item.book}" data-chapter="${item.chapter}">
+                        Resume
+                    </button>
+                </div>
+            `).join('');
+
+            historyList.querySelectorAll('.resume-reading-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const bk = btn.dataset.book;
+                    const ch = btn.dataset.chapter;
+                    closePersonalSpaceDrawer();
+                    updateSelectionText(bk, ch);
+                    loadChapter(bk, ch, 'clear');
+                });
+            });
+        }
+    }
+}
+
+function recordChapterRead(book, chapter) {
+    if (!book || !chapter) return;
+    const chNum = parseInt(chapter, 10);
+    const key = `${book}_${chNum}`;
+    const now = Date.now();
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    if (!readingProgress.readChapters) readingProgress.readChapters = {};
+    if (!readingProgress.history) readingProgress.history = [];
+
+    const isNewChapter = !readingProgress.readChapters[key];
+    readingProgress.readChapters[key] = {
+        book,
+        chapter: chNum,
+        completedAt: now,
+        count: (readingProgress.readChapters[key]?.count || 0) + 1
+    };
+
+    // Update history (keep last 40, deduplicating consecutive same chapter)
+    const lastHist = readingProgress.history[0];
+    if (!lastHist || lastHist.book !== book || lastHist.chapter !== chNum) {
+        readingProgress.history.unshift({ book, chapter: chNum, time: now });
+        if (readingProgress.history.length > 40) readingProgress.history.pop();
+    }
+
+    // Update daily streak and count
+    if (readingProgress.lastActiveDate !== todayStr) {
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        if (readingProgress.lastActiveDate === yesterday) {
+            readingProgress.streak = (readingProgress.streak || 0) + 1;
+        } else if (!readingProgress.lastActiveDate) {
+            readingProgress.streak = 1;
+        } else {
+            readingProgress.streak = 1;
+        }
+        readingProgress.todayCount = 1;
+        readingProgress.lastActiveDate = todayStr;
+    } else {
+        if (isNewChapter) {
+            readingProgress.todayCount = (readingProgress.todayCount || 0) + 1;
+        }
+    }
+
+    renderPersonalSpaceDrawer();
+    saveToLocalDB();
+    pushToCloud({ progress: readingProgress });
+}
+
+function applyAISettingsUI() {
+    const modelSel = document.getElementById('settings-ai-model-select');
+    if (modelSel && aiSettingsConfig.model) modelSel.value = aiSettingsConfig.model;
+
+    const maxTokSel = document.getElementById('settings-ai-max-tokens');
+    if (maxTokSel && aiSettingsConfig.maxOutputTokens) maxTokSel.value = String(aiSettingsConfig.maxOutputTokens);
+
+    const slider = document.getElementById('ai-thinking-slider');
+    const display = document.getElementById('ai-thinking-display');
+    const budget = typeof aiSettingsConfig.thinkingBudget === 'number' ? aiSettingsConfig.thinkingBudget : 0;
+    if (slider) slider.value = budget;
+    if (display) {
+        display.textContent = budget === 0 ? '0 (Off - Fastest)' : `${budget} tokens`;
+    }
+
+    document.querySelectorAll('.ai-thinking-preset-btn').forEach(btn => {
+        const isPreset = btn.dataset.preset === aiSettingsConfig.thinkingPreset;
+        btn.classList.toggle('active', isPreset);
+        btn.classList.toggle('bg-primary', isPreset);
+        btn.classList.toggle('text-white', isPreset);
+        btn.classList.toggle('text-gray-600', !isPreset);
+        btn.classList.toggle('dark:text-gray-300', !isPreset);
     });
 }
 
@@ -2503,7 +2963,7 @@ async function removeHighlight() {
 async function resetSettings() {
     const confirmed = await showConfirmDialog({
         title: 'Reset Settings to Default?',
-        message: 'This will restore typography, font size, themes, and reading layout back to default settings. Your bookmarks and notes will remain intact.',
+        message: 'This will restore typography, font size, theme, reading layout, AI model, and thinking tokens to default. Your reading history, streaks, bookmarks, highlights, and notes will NOT be deleted.',
         confirmText: 'Reset Settings',
         type: 'warning'
     });
@@ -2518,10 +2978,21 @@ async function resetSettings() {
     applyCustomColors(null, null, true);
     applyAccentColor({ color: '#4f46e5', hover: '#4338ca', glow: 'rgba(79,70,229,0.3)' }, true);
     applyTheme('dark', true);
+    applyFullTheme('amoled_black', true);
     document.querySelectorAll('.theme-preset-select').forEach(sel => sel.value = 'custom');
     
+    // Reset AI settings to ultra-fast defaults
+    aiSettingsConfig = {
+        model: 'gemini-3.1-flash-lite',
+        thinkingBudget: 0,
+        thinkingPreset: 'off',
+        maxOutputTokens: 2048
+    };
+    applyAISettingsUI();
+    updateSettingsPreview();
+    
     saveSettings();
-    showToast('Settings reset to default');
+    showToast('Settings restored to defaults (user data preserved)');
 }
 
 async function resetApp() { 
@@ -4095,10 +4566,8 @@ function setAIFeaturesEnabled(enabled, skipSave = false) {
 
     // Update search bar placeholders & padding
     document.querySelectorAll('.direct-verse-input').forEach(input => {
+        input.placeholder = "e.g. Jn 3:16 or John 3:16 etc";
         if (aiFeaturesEnabled) {
-            input.placeholder = input.id === 'quick-search-input' 
-                ? "e.g. Jn 3:16, Mt 26, or 'Eucharist'..." 
-                : "e.g. Jn 3:16 or 'Eucharist'";
             if (input.id === 'quick-search-input') {
                 input.classList.remove('pr-16');
                 input.classList.add('pr-28');
@@ -4107,7 +4576,6 @@ function setAIFeaturesEnabled(enabled, skipSave = false) {
                 input.classList.add('pr-24');
             }
         } else {
-            input.placeholder = "e.g. Jn 3:16, Mt 26, Gen 1";
             if (input.id === 'quick-search-input') {
                 input.classList.remove('pr-28');
                 input.classList.add('pr-16');
@@ -4241,10 +4709,36 @@ function closeAISearchModal() {
     if (modal) modal.classList.add('hidden');
 }
 
+// Client-side instant query cache
+const aiQueryCache = new Map();
+
 // Universal Client-Side Gemini Search (Direct REST API for static/PWA/external hosting)
 async function callGeminiDirect(apiKey, cleanQuery, translation) {
     if (!apiKey) return null;
-    const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
+    const cleanKey = apiKey.trim();
+    const transName = translation || 'Catholic Public Domain Version';
+    const cacheKey = `ai_v2_${cleanQuery.toLowerCase().trim()}_${transName.toLowerCase().trim()}`;
+
+    // 1. Instant in-memory cache hit (0ms)
+    if (aiQueryCache.has(cacheKey)) {
+        return aiQueryCache.get(cacheKey);
+    }
+
+    // 2. Instant sessionStorage cache hit
+    try {
+        const stored = sessionStorage.getItem(cacheKey);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed && Array.isArray(parsed.verses)) {
+                aiQueryCache.set(cacheKey, parsed);
+                return parsed;
+            }
+        }
+    } catch (_) {}
+
+    // User-configured AI Model and thinking budget
+    const activeModel = aiSettingsConfig.model || 'gemini-3.1-flash-lite';
+    const candidateModels = [activeModel, 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'].filter((m, idx, arr) => arr.indexOf(m) === idx);
     
     const systemInstruction = `You are an expert Catholic scripture search engine and biblical theologian.
 Your task is to search the 73 books of the Catholic Bible (including the Deuterocanonical books: Tobit, Judith, 1 & 2 Maccabees, Wisdom, Sirach, Baruch) and find verses directly addressing the user's natural language subject or question (such as "jesus on the eucharist", "Jesus naming Peter the rock", "Jesus being opposed by people", "charity and love", "psalms of sorrow").
@@ -4255,7 +4749,7 @@ For each verse:
 3. verse: Integer starting verse number.
 4. verseEnd: Integer ending verse number if a range, or same as verse if single.
 5. reference: Standard citation string (e.g. "John 6:51-58" or "Matthew 16:18-19").
-6. text: The actual verse text in the requested Catholic translation (${translation || 'CPDV'}).
+6. text: The actual verse text in the requested Catholic translation (${transName}).
 7. explanation: 1-2 clear, insightful sentences explaining specifically why and how this scripture connects with the user's query.
 8. testament: "Old Testament" or "New Testament".
 
@@ -4263,8 +4757,8 @@ Also provide a concise 1-2 sentence overarching biblical summary of what Catholi
 Respond in valid JSON only with keys "summary" and "verses" (array of verse objects).`;
 
     const userPrompt = `User search subject / question: "${cleanQuery}".
-Requested Bible translation: ${translation || 'Catholic Public Domain Version'}.
-Find 4 to 8 of the most relevant, direct, and spiritually profound Bible verses from the 73 books of the Catholic Bible canon that address this subject.`;
+Requested Bible translation: ${transName}.
+Find 4 to 6 of the most relevant, direct, and spiritually profound Bible verses from the 73 books of the Catholic Bible canon that address this subject.`;
 
     const requestBody = {
         systemInstruction: {
@@ -4275,14 +4769,18 @@ Find 4 to 8 of the most relevant, direct, and spiritually profound Bible verses 
         ],
         generationConfig: {
             responseMimeType: "application/json",
-            temperature: 0.2
+            temperature: 0.2,
+            maxOutputTokens: aiSettingsConfig.maxOutputTokens || 2048,
+            thinkingConfig: {
+                thinkingBudget: typeof aiSettingsConfig.thinkingBudget === 'number' ? aiSettingsConfig.thinkingBudget : 0
+            }
         }
     };
 
     let lastError = null;
     for (const model of candidateModels) {
         try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -4310,14 +4808,27 @@ Find 4 to 8 of the most relevant, direct, and spiritually profound Bible verses 
             }
 
             const parsed = JSON.parse(cleaned);
+            let finalResult = null;
             if (Array.isArray(parsed)) {
-                return {
+                finalResult = {
                     summary: `Scripture teachings regarding "${cleanQuery}".`,
                     verses: parsed
                 };
+            } else if (parsed && Array.isArray(parsed.verses)) {
+                finalResult = parsed;
             }
-            if (parsed && Array.isArray(parsed.verses)) {
-                return parsed;
+
+            if (finalResult) {
+                // Store in memory cache & sessionStorage
+                aiQueryCache.set(cacheKey, finalResult);
+                if (aiQueryCache.size > 100) {
+                    const oldest = aiQueryCache.keys().next().value;
+                    aiQueryCache.delete(oldest);
+                }
+                try {
+                    sessionStorage.setItem(cacheKey, JSON.stringify(finalResult));
+                } catch (_) {}
+                return finalResult;
             }
         } catch (e) {
             if (e.message && e.message.includes("Invalid Gemini API key")) throw e;
@@ -4341,7 +4852,13 @@ async function validateGeminiKeyDirect(key) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    contents: [{ parts: [{ text: 'Respond with OK' }] }]
+                    contents: [{ parts: [{ text: 'Respond with OK' }] }],
+                    generationConfig: {
+                        maxOutputTokens: 10,
+                        thinkingConfig: {
+                            thinkingBudget: 0
+                        }
+                    }
                 })
             });
 
@@ -4425,11 +4942,22 @@ async function performAISearch(query) {
                     'Content-Type': 'application/json',
                     ...(apiKey ? { 'x-gemini-api-key': apiKey } : {})
                 },
-                body: JSON.stringify({ query: cleanQuery, translation })
+                body: JSON.stringify({
+                    query: cleanQuery,
+                    translation,
+                    model: aiSettingsConfig.model,
+                    thinkingBudget: aiSettingsConfig.thinkingBudget,
+                    maxOutputTokens: aiSettingsConfig.maxOutputTokens
+                })
             }).catch(() => null);
 
             if (res && res.ok) {
                 data = await res.json().catch(() => null);
+                if (data && Array.isArray(data.verses)) {
+                    const cacheKey = `ai_v2_${cleanQuery.toLowerCase().trim()}_${(translation || 'Catholic Public Domain Version').toLowerCase().trim()}`;
+                    aiQueryCache.set(cacheKey, data);
+                    try { sessionStorage.setItem(cacheKey, JSON.stringify(data)); } catch (_) {}
+                }
             } else if (res && (res.status === 401 || res.status === 400)) {
                 const errData = await res.json().catch(() => ({}));
                 if (res.status === 401 || errData.needsApiKey) {
@@ -4807,6 +5335,7 @@ window.onload = async () => {
         aiManageKeyBtn.addEventListener('click', () => {
             closeAISearchModal();
             settingsModal.classList.remove('hidden');
+            switchSettingsTab('ai');
             setTimeout(() => {
                 const sec = document.getElementById('settings-ai-section');
                 if (sec) sec.scrollIntoView({ behavior: 'smooth' });
@@ -4863,16 +5392,179 @@ window.onload = async () => {
         });
     }
 
-    const toggleKeyVisibilityBtn = document.getElementById('toggle-key-visibility-btn');
-    if (toggleKeyVisibilityBtn && settingsKeyInput) {
-        toggleKeyVisibilityBtn.addEventListener('click', () => {
-            if (settingsKeyInput.type === 'password') {
-                settingsKeyInput.type = 'text';
-                toggleKeyVisibilityBtn.textContent = 'Hide';
-            } else {
-                settingsKeyInput.type = 'password';
-                toggleKeyVisibilityBtn.textContent = 'Show';
+    // Personal Space Drawer Listeners
+    const personalHandle = document.getElementById('personal-space-handle');
+    if (personalHandle) {
+        personalHandle.addEventListener('click', () => openPersonalSpaceDrawer());
+    }
+
+    const closePersonalDrawerBtn = document.getElementById('close-personal-drawer-btn');
+    if (closePersonalDrawerBtn) {
+        closePersonalDrawerBtn.addEventListener('click', () => closePersonalSpaceDrawer());
+    }
+
+    const personalBackdrop = document.getElementById('personal-space-backdrop');
+    if (personalBackdrop) {
+        personalBackdrop.addEventListener('click', () => closePersonalSpaceDrawer());
+    }
+
+    document.querySelectorAll('.open-personal-space-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (window.innerWidth < 1024) toggleMobileSidebar(false);
+            openPersonalSpaceDrawer();
+        });
+    });
+
+    const drawerSyncToggle = document.getElementById('drawer-cloud-sync-toggle');
+    if (drawerSyncToggle) {
+        drawerSyncToggle.addEventListener('change', (e) => {
+            cloudSyncEnabled = e.target.checked;
+            saveSettings();
+            renderPersonalSpaceDrawer();
+            showToast(cloudSyncEnabled ? "Cloud sync enabled" : "Cloud sync paused (local only)");
+            if (cloudSyncEnabled && currentUser) {
+                pushToCloud({ progress: readingProgress }, true);
             }
+        });
+    }
+
+    const drawerSyncNowBtn = document.getElementById('drawer-sync-now-btn');
+    if (drawerSyncNowBtn) {
+        drawerSyncNowBtn.addEventListener('click', async () => {
+            if (!currentUser) {
+                loginModal.classList.remove('hidden');
+                authError.classList.add('hidden');
+                return;
+            }
+            drawerSyncNowBtn.disabled = true;
+            drawerSyncNowBtn.classList.add('opacity-50', 'pointer-events-none');
+            showToast("Syncing with cloud...");
+            await flushPendingCloudUpdates();
+            await pullFromCloud(true);
+            showToast("Sync complete!");
+            drawerSyncNowBtn.disabled = false;
+            drawerSyncNowBtn.classList.remove('opacity-50', 'pointer-events-none');
+        });
+    }
+
+    const drawerAuthBtn = document.getElementById('drawer-auth-btn');
+    if (drawerAuthBtn) {
+        drawerAuthBtn.addEventListener('click', () => {
+            loginModal.classList.remove('hidden');
+            authError.classList.add('hidden');
+        });
+    }
+
+    const goalIncreaseBtn = document.getElementById('goal-increase-btn');
+    if (goalIncreaseBtn) {
+        goalIncreaseBtn.addEventListener('click', () => {
+            const current = readingProgress.dailyTarget || 3;
+            if (current < 50) {
+                readingProgress.dailyTarget = current + 1;
+                renderPersonalSpaceDrawer();
+                saveToLocalDB();
+                pushToCloud({ progress: readingProgress });
+            }
+        });
+    }
+
+    const goalDecreaseBtn = document.getElementById('goal-decrease-btn');
+    if (goalDecreaseBtn) {
+        goalDecreaseBtn.addEventListener('click', () => {
+            const current = readingProgress.dailyTarget || 3;
+            if (current > 1) {
+                readingProgress.dailyTarget = current - 1;
+                renderPersonalSpaceDrawer();
+                saveToLocalDB();
+                pushToCloud({ progress: readingProgress });
+            }
+        });
+    }
+
+    const clearHistoryBtn = document.getElementById('clear-reading-history-btn');
+    if (clearHistoryBtn) {
+        clearHistoryBtn.addEventListener('click', async () => {
+            const confirmed = await showConfirmDialog({
+                title: 'Clear Reading History?',
+                message: 'This will clear your recent reading history list. Your reading streaks and overall Catholic Bible progress will remain intact.',
+                confirmText: 'Clear History',
+                type: 'warning'
+            });
+            if (!confirmed) return;
+            readingProgress.history = [];
+            renderPersonalSpaceDrawer();
+            saveToLocalDB();
+            pushToCloud({ progress: readingProgress });
+            showToast("Reading history cleared");
+        });
+    }
+
+    // AI Settings Listeners
+    const aiModelSelect = document.getElementById('settings-ai-model-select');
+    if (aiModelSelect) {
+        aiModelSelect.addEventListener('change', (e) => {
+            aiSettingsConfig.model = e.target.value;
+            saveSettings();
+            showToast(`AI Model set to ${e.target.options[e.target.selectedIndex].text}`);
+        });
+    }
+
+    const aiThinkingSlider = document.getElementById('ai-thinking-slider');
+    const aiThinkingDisplay = document.getElementById('ai-thinking-display');
+    if (aiThinkingSlider) {
+        aiThinkingSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value, 10);
+            aiSettingsConfig.thinkingBudget = val;
+            aiSettingsConfig.thinkingPreset = val === 0 ? 'off' : (val === 256 ? 'fast' : (val === 1024 ? 'deep' : 'custom'));
+            if (aiThinkingDisplay) {
+                aiThinkingDisplay.textContent = val === 0 ? '0 (Off - Fastest)' : `${val} tokens`;
+            }
+            document.querySelectorAll('.ai-thinking-preset-btn').forEach(btn => {
+                const isPreset = btn.dataset.preset === aiSettingsConfig.thinkingPreset;
+                btn.classList.toggle('active', isPreset);
+                btn.classList.toggle('bg-primary', isPreset);
+                btn.classList.toggle('text-white', isPreset);
+                btn.classList.toggle('text-gray-600', !isPreset);
+                btn.classList.toggle('dark:text-gray-300', !isPreset);
+            });
+        });
+        aiThinkingSlider.addEventListener('change', () => {
+            saveSettings();
+        });
+    }
+
+    document.querySelectorAll('.ai-thinking-preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const preset = btn.dataset.preset;
+            let budget = 0;
+            if (preset === 'fast') budget = 256;
+            else if (preset === 'deep') budget = 1024;
+            else if (preset === 'off') budget = 0;
+            else if (preset === 'custom') budget = aiSettingsConfig.thinkingBudget || 512;
+
+            aiSettingsConfig.thinkingPreset = preset;
+            aiSettingsConfig.thinkingBudget = budget;
+            if (aiThinkingSlider) aiThinkingSlider.value = budget;
+            if (aiThinkingDisplay) {
+                aiThinkingDisplay.textContent = budget === 0 ? '0 (Off - Fastest)' : `${budget} tokens`;
+            }
+            document.querySelectorAll('.ai-thinking-preset-btn').forEach(b => {
+                const isPreset = b.dataset.preset === preset;
+                b.classList.toggle('active', isPreset);
+                b.classList.toggle('bg-primary', isPreset);
+                b.classList.toggle('text-white', isPreset);
+                b.classList.toggle('text-gray-600', !isPreset);
+                b.classList.toggle('dark:text-gray-300', !isPreset);
+            });
+            saveSettings();
+        });
+    });
+
+    const aiMaxTokensSelect = document.getElementById('settings-ai-max-tokens');
+    if (aiMaxTokensSelect) {
+        aiMaxTokensSelect.addEventListener('change', (e) => {
+            aiSettingsConfig.maxOutputTokens = parseInt(e.target.value, 10);
+            saveSettings();
         });
     }
 
@@ -4926,7 +5618,22 @@ window.onload = async () => {
     document.querySelectorAll('.font-increase').forEach(btn => btn.addEventListener('click', () => changeFontSize(0.125))); document.querySelectorAll('.font-decrease').forEach(btn => btn.addEventListener('click', () => changeFontSize(-0.125)));
     document.querySelectorAll('.line-spacing-btn').forEach(btn => btn.addEventListener('click', (e) => applyLineSpacing(e.currentTarget.dataset.ratio))); document.querySelectorAll('.font-weight-toggle').forEach(btn => btn.addEventListener('click', () => applyFontWeight(!currentIsBold)));
     document.querySelectorAll('.content-width-slider').forEach(slider => { slider.addEventListener('input', (e) => applyContentWidth(e.target.value, true)); slider.addEventListener('change', (e) => applyContentWidth(e.target.value, false)); });
-    document.querySelectorAll('.theme-toggle').forEach(btn => btn.addEventListener('click', () => applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark'))); document.querySelectorAll('.font-family-select').forEach(sel => sel.addEventListener('change', (e) => applyFontFamily(e.target.value)));
+    
+    // Theme toggle switches cleanly between pure white and AMOLED black presets to prevent contrast collisions
+    document.querySelectorAll('.theme-toggle').forEach(btn => btn.addEventListener('click', () => {
+        const isDark = document.documentElement.classList.contains('dark');
+        applyFullTheme(isDark ? 'pure_white' : 'amoled_black');
+    }));
+    
+    document.querySelectorAll('.font-family-select').forEach(sel => sel.addEventListener('change', (e) => applyFontFamily(e.target.value)));
+
+    // Categorical Settings Tabs Navigation
+    document.querySelectorAll('.settings-nav-tab').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const tab = e.currentTarget.dataset.tab;
+            if (tab) switchSettingsTab(tab);
+        });
+    });
     
     document.querySelectorAll('.theme-category-tab').forEach(tab => {
         tab.addEventListener('click', (e) => {
