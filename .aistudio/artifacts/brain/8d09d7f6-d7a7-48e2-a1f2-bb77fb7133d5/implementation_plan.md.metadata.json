@@ -1,6 +1,6 @@
 {
-  "summary":  "Revised architectural blueprint and implementation plan for the Personal Space right-edge slider button and expanding drawer, ultra-efficient low-write cloud synchronization coalescing, 73-book Catholic Bible progress tracking, AI model and thinking token configuration, and non-destructive settings restoration.",
-  "updatedAt":  "2026-10-29T10:43:02.566592318Z",
+  "summary":  "Implementation plan to address user requests:\n1. Limit reading history to 20 items.\n2. Hide personal space handle slider on mobile (available via sidebar menu).\n3. Fix Sign In popup layering above personal space drawer (z-index 60 + auto-close drawer).\n4. Register real readings using time threshold + bottom scroll trigger instead of just loading/scrolling past chapters.",
+  "updatedAt":  "2026-10-30T12:36:43.779979800Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

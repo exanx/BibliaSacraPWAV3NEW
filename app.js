@@ -716,7 +716,7 @@ function buildProgressObject() {
         todayCount: readingProgress.todayCount || 0,
         lastActiveDate: readingProgress.lastActiveDate || '',
         readChapters: readingProgress.readChapters || {},
-        history: (readingProgress.history || []).slice(0, 30),
+        history: (readingProgress.history || []).slice(0, 20),
         updatedAt: Date.now()
     };
 }
@@ -926,7 +926,7 @@ function smartMerge(cloudData) {
                 ...readingProgress,
                 ...cProg,
                 readChapters: mergedChapters,
-                history: Array.isArray(cProg.history) ? cProg.history : (readingProgress.history || [])
+                history: (Array.isArray(cProg.history) ? cProg.history : (readingProgress.history || [])).slice(0, 20)
             };
             uiNeedsUpdate = true;
         } else if ((readingProgress.updatedAt || 0) > cProg.updatedAt) {
@@ -975,7 +975,7 @@ async function loadDataFromLocalDB() {
                 ...readingProgress,
                 ...data.progress,
                 readChapters: data.progress.readChapters || data.progress.chaptersRead || {},
-                history: Array.isArray(data.progress.history) ? data.progress.history : []
+                history: (Array.isArray(data.progress.history) ? data.progress.history : []).slice(0, 20)
             };
         }
         if (typeof data.cloudSyncEnabled === 'boolean') {
@@ -1106,9 +1106,14 @@ mainScrollArea.addEventListener('scroll', () => {
                     updateSelectionText(b, c);
                     saveToLocalDB();
                     scheduleLastReadSync();
+                    // Switch active reading session to current in-view chapter
+                    startActiveReadingSession(b, c);
                 }
             }
         }
+
+        // Validate real reading engagement (time + scroll to chapter end)
+        checkReadingScrollProgress();
     }, 300);
 });
 
@@ -1552,6 +1557,8 @@ async function loadChapter(book, chapter, direction = 'clear', targetVerse = nul
 
     try {
         const html = await fetchChapterHTML(book, chapter); const wrapper = document.createElement('div'); wrapper.className = 'chapter-wrapper relative pb-16 pt-4'; wrapper.innerHTML = html; 
+        wrapper.dataset.book = book;
+        wrapper.dataset.chapter = chapter;
         
         wrapper.querySelectorAll('[data-verse-ref]').forEach(el => el.addEventListener('click', showHighlightPopup));
         
@@ -1586,8 +1593,8 @@ async function loadChapter(book, chapter, direction = 'clear', targetVerse = nul
             else if (direction === 'prev') { const last = loadedChapters[loadedChapters.length - 1]; last.remove(); newestIndex--; }
         }
 
-        // Record chapter in Personal Space reading progress and streaks
-        recordChapterRead(book, chapter);
+        // Start active reading session tracking for real reading validation (time + bottom scroll)
+        startActiveReadingSession(book, chapter);
     } catch (err) { if(direction === 'clear') scriptureDisplay.innerHTML = `<div class="text-center p-6 bg-red-50 dark:bg-red-500/10 rounded-xl mt-4"><p class="text-red-500 text-sm">${err.message}</p></div>`; } 
     finally { bottomSentinel.classList.add('opacity-0'); bottomSentinel.innerHTML = ''; topSentinel.classList.add('opacity-0'); topSentinel.innerHTML = ''; setTimeout(() => { isFetching = false; }, 50); }
 }
@@ -2038,7 +2045,7 @@ function renderPersonalSpaceDrawer() {
         if (hist.length === 0) {
             historyList.innerHTML = `<p class="text-[11px] text-gray-400 dark:text-gray-500 py-3 text-center">No reading history yet. Read any chapter to start tracking!</p>`;
         } else {
-            historyList.innerHTML = hist.slice(0, 15).map(item => `
+            historyList.innerHTML = hist.slice(0, 20).map(item => `
                 <div class="flex items-center justify-between p-2 rounded-xl bg-gray-50/70 dark:bg-white/5 border border-gray-100 dark:border-white/5 hover:border-primary/40 transition-colors">
                     <div class="min-w-0 pr-2">
                         <div class="font-bold text-xs text-gray-800 dark:text-gray-200 truncate">${item.book} ${item.chapter}</div>
@@ -2063,7 +2070,88 @@ function renderPersonalSpaceDrawer() {
     }
 }
 
-function recordChapterRead(book, chapter) {
+// Real Reading Validation Engine (Time Threshold >= 15s + Bottom Scroll Trigger)
+const REAL_READING_MIN_TIME_MS = 15000; // 15 seconds active engagement
+let activeReadingSession = {
+    book: null,
+    chapter: null,
+    startTime: 0,
+    hasReachedBottom: false,
+    completed: false
+};
+
+let realReadingCheckTimer = null;
+
+function startActiveReadingSession(book, chapter) {
+    if (!book || !chapter) return;
+    const chNum = parseInt(chapter, 10);
+    
+    // If already reading this exact chapter and not yet completed, keep accumulation
+    if (activeReadingSession.book === book && activeReadingSession.chapter === chNum && !activeReadingSession.completed) {
+        return;
+    }
+
+    if (realReadingCheckTimer) {
+        clearTimeout(realReadingCheckTimer);
+        realReadingCheckTimer = null;
+    }
+
+    activeReadingSession = {
+        book,
+        chapter: chNum,
+        startTime: Date.now(),
+        hasReachedBottom: false,
+        completed: false
+    };
+}
+
+function checkReadingScrollProgress() {
+    if (!activeReadingSession.book || !activeReadingSession.chapter || activeReadingSession.completed) {
+        return;
+    }
+
+    // Find the chapter wrapper corresponding to active session
+    const wrappers = document.querySelectorAll('.chapter-wrapper');
+    let activeWrapper = null;
+    wrappers.forEach(w => {
+        if (w.dataset.book === activeReadingSession.book && parseInt(w.dataset.chapter, 10) === activeReadingSession.chapter) {
+            activeWrapper = w;
+        }
+    });
+
+    if (!activeWrapper) return;
+
+    // Check if bottom of chapter has scrolled into view or passed through viewport
+    const rect = activeWrapper.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    
+    // Bottom reached if the bottom of this chapter is within or above the lower half of viewport
+    const bottomReached = rect.bottom <= (viewportHeight + 150);
+
+    if (bottomReached) {
+        activeReadingSession.hasReachedBottom = true;
+        
+        // Check active reading time threshold (only counts when document is visible)
+        const elapsed = Date.now() - activeReadingSession.startTime;
+        if (elapsed >= REAL_READING_MIN_TIME_MS && document.visibilityState === 'visible') {
+            activeReadingSession.completed = true;
+            if (realReadingCheckTimer) clearTimeout(realReadingCheckTimer);
+            recordChapterRead(activeReadingSession.book, activeReadingSession.chapter, true);
+        } else if (!realReadingCheckTimer && !activeReadingSession.completed) {
+            // User reached bottom quickly; wait out the remaining time if they remain on this chapter
+            const remaining = Math.max(500, REAL_READING_MIN_TIME_MS - elapsed);
+            realReadingCheckTimer = setTimeout(() => {
+                realReadingCheckTimer = null;
+                if (!activeReadingSession.completed && activeReadingSession.hasReachedBottom && document.visibilityState === 'visible') {
+                    activeReadingSession.completed = true;
+                    recordChapterRead(activeReadingSession.book, activeReadingSession.chapter, true);
+                }
+            }, remaining);
+        }
+    }
+}
+
+function recordChapterRead(book, chapter, fromValidation = false) {
     if (!book || !chapter) return;
     const chNum = parseInt(chapter, 10);
     const key = `${book}_${chNum}`;
@@ -2081,11 +2169,13 @@ function recordChapterRead(book, chapter) {
         count: (readingProgress.readChapters[key]?.count || 0) + 1
     };
 
-    // Update history (keep last 40, deduplicating consecutive same chapter)
+    // Update history (strictly capped at 20, deduplicating consecutive same chapter)
     const lastHist = readingProgress.history[0];
     if (!lastHist || lastHist.book !== book || lastHist.chapter !== chNum) {
         readingProgress.history.unshift({ book, chapter: chNum, time: now });
-        if (readingProgress.history.length > 40) readingProgress.history.pop();
+    }
+    if (readingProgress.history.length > 20) {
+        readingProgress.history = readingProgress.history.slice(0, 20);
     }
 
     // Update daily streak and count
@@ -2109,6 +2199,10 @@ function recordChapterRead(book, chapter) {
     renderPersonalSpaceDrawer();
     saveToLocalDB();
     pushToCloud({ progress: readingProgress });
+
+    if (fromValidation) {
+        showToast(`✓ Completed reading ${book} ${chNum}! Progress recorded.`);
+    }
 }
 
 function applyAISettingsUI() {
@@ -5450,6 +5544,7 @@ window.onload = async () => {
     const drawerAuthBtn = document.getElementById('drawer-auth-btn');
     if (drawerAuthBtn) {
         drawerAuthBtn.addEventListener('click', () => {
+            closePersonalSpaceDrawer();
             loginModal.classList.remove('hidden');
             authError.classList.add('hidden');
         });
