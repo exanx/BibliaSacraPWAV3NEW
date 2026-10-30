@@ -5709,6 +5709,108 @@ window.onload = async () => {
             if (i !== e.target) i.value = e.target.value; 
         })); 
     });
+
+    // Search Help popovers (PC hover or click, mobile tap, outside click dismiss, example chips)
+    const initSearchHelpPopovers = () => {
+        const wrappers = document.querySelectorAll('.search-help-wrapper');
+        wrappers.forEach(wrapper => {
+            const btn = wrapper.querySelector('.search-help-toggle-btn');
+            const popover = wrapper.querySelector('.search-help-popover');
+            if (!btn || !popover) return;
+
+            // Click / tap toggle (mobile & desktop)
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isHidden = popover.classList.contains('hidden');
+                document.querySelectorAll('.search-help-popover').forEach(p => {
+                    if (p !== popover) p.classList.add('hidden');
+                });
+                if (isHidden) {
+                    popover.classList.remove('hidden');
+                } else {
+                    popover.classList.add('hidden');
+                }
+            });
+
+            // Desktop mouse hover support
+            let hoverTimeout = null;
+            wrapper.addEventListener('mouseenter', () => {
+                if (window.matchMedia('(hover: hover)').matches) {
+                    clearTimeout(hoverTimeout);
+                    popover.classList.remove('hidden');
+                }
+            });
+            wrapper.addEventListener('mouseleave', () => {
+                if (window.matchMedia('(hover: hover)').matches) {
+                    hoverTimeout = setTimeout(() => {
+                        popover.classList.add('hidden');
+                    }, 250);
+                }
+            });
+
+            // Prevent clicks inside the popover from bubbling up to close it
+            popover.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Allow tapping an example chip to fill adjacent search input
+                const chip = e.target.closest('span');
+                if (chip && chip.classList.contains('rounded') && chip.textContent) {
+                    const text = chip.textContent.trim().replace(/^["']|["']$/g, '');
+                    const container = wrapper.closest('.space-y-6') || wrapper.closest('#quick-search-modal');
+                    const input = container?.querySelector('.direct-verse-input') || container?.querySelector('#quick-search-input');
+                    if (input) {
+                        input.value = text;
+                        input.focus();
+                        showToast(`Loaded "${text}" into search`);
+                    }
+                }
+            });
+        });
+
+        // Close search help on outside click
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-help-wrapper')) {
+                document.querySelectorAll('.search-help-popover').forEach(p => p.classList.add('hidden'));
+            }
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.search-help-popover').forEach(p => p.classList.add('hidden'));
+            }
+        });
+    };
+    initSearchHelpPopovers();
+
+    // Easter Egg: Click Biblia Sacra top icon 7 times in rapid succession to visit rosarium.web.app
+    let easterEggClicks = 0;
+    let easterEggTimer = null;
+    document.querySelectorAll('.easter-egg-trigger').forEach(trigger => {
+        trigger.addEventListener('click', async (e) => {
+            easterEggClicks++;
+            clearTimeout(easterEggTimer);
+            easterEggTimer = setTimeout(() => {
+                easterEggClicks = 0;
+            }, 3000);
+
+            if (easterEggClicks >= 7) {
+                easterEggClicks = 0;
+                clearTimeout(easterEggTimer);
+                
+                const confirmed = await showConfirmDialog({
+                    title: 'Visit Rosarium?',
+                    message: 'Do you want to visit rosarium.web.app (Interactive Holy Rosary)?',
+                    confirmText: 'Yes, Open Rosarium',
+                    cancelText: 'Stay Here',
+                    type: 'info'
+                });
+
+                if (confirmed) {
+                    window.location.href = 'https://rosarium.web.app';
+                }
+            }
+        });
+    });
     
     document.querySelectorAll('.font-increase').forEach(btn => btn.addEventListener('click', () => changeFontSize(0.125))); document.querySelectorAll('.font-decrease').forEach(btn => btn.addEventListener('click', () => changeFontSize(-0.125)));
     document.querySelectorAll('.line-spacing-btn').forEach(btn => btn.addEventListener('click', (e) => applyLineSpacing(e.currentTarget.dataset.ratio))); document.querySelectorAll('.font-weight-toggle').forEach(btn => btn.addEventListener('click', () => applyFontWeight(!currentIsBold)));
